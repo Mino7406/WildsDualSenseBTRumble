@@ -77,3 +77,7 @@ If it feels like a constant buzz rather than distinct hits, **raise the Gate** â
 ## Credits
 
 Protocol details follow the Linux [`hid-playstation`](https://github.com/torvalds/linux/blob/master/drivers/hid/hid-playstation.c) driver. Plugin headers come from [REFramework](https://github.com/praydog/REFramework).
+
+## License
+
+[MIT](LICENSE)
