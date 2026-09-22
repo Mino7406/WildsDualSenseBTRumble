@@ -1,0 +1,5 @@
+# build output
+out/
+
+# fetched by build.ps1 from praydog/REFramework, not vendored here
+plugin/include/
