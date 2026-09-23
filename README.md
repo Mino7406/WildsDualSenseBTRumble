@@ -63,6 +63,8 @@ The plugin exists because REFramework's lua sandbox cannot reach a HID device, a
 
 **Lua file IO is sandboxed to `reframework/data`.** Paths in the lua are bare names for that reason.
 
+**The mod leaves one file behind, not three.** Settings and the live motor level share `reframework/data/WildsDualSenseBTRumble.txt`, every value written under its own name so neither half can be read as the other. Settings come first and the state line last: lua rewrites the file by truncating it, so a reader that catches it mid-write sees a prefix, and naming every field means a torn state line is rejected rather than half-read. The plugin keeps no log of its own - it reports through REFramework's logger, and only when something changes.
+
 </details>
 
 ---

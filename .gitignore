@@ -3,3 +3,6 @@ out/
 
 # fetched by build.ps1 from praydog/REFramework, not vendored here
 plugin/include/
+
+# test harness build output
+parse_test.exe

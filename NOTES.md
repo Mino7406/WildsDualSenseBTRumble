@@ -11,6 +11,21 @@ read-only, the plugin only writes to the pad, and neither touches game state.
 
 Defaults after tuning: strength 50%, contrast (gamma) 1.90, gate 0.15.
 
+**v1.1 is housekeeping and has not been run in the game yet.** Nothing about the
+rumble itself changed. What changed is what the mod leaves in `reframework/data`,
+three files down to one:
+
+- Settings and the live levels share `WildsDualSenseBTRumble.txt`, every value
+  under its own name. v1.0's `.json` is imported on first run and then deleted.
+- The plugin's own `.log` is gone. It reports through REFramework's logger
+  instead, and only on a change of state, so a healthy session writes nothing.
+
+Both halves were checked against each other offline, which covers the parsing but
+not the game. **Smoke-test before publishing:** launch, open the menu, move the
+strength slider, then confirm `WildsDualSenseBTRumble.txt` carries the new value
+and a `state` line whose `sequence` climbs — and that rumble still arrives. If the
+v1.0 settings came across, the old `.json` will have removed itself.
+
 ## Picking this up on another machine
 
 ```powershell
@@ -36,9 +51,26 @@ out\WildsDualSenseBTRumble.dll  ->  MonsterHunterWilds\reframework\plugins\
 lua\WildsDualSenseBTRumble.lua  ->  MonsterHunterWilds\reframework\autorun\
 ```
 
-The plugin writes `reframework/data/WildsDualSenseBTRumble.log`, which records
-whether a pad was found, opened, and over which transport. Start there when
-nothing buzzes.
+The plugin reports through REFramework's own logger, so look in
+`re2_framework_log.txt` and search for `WildsDualSenseBTRumble`. It says whether a
+pad was found, opened, and over which transport. A working session logs nothing,
+which is itself the answer when the file is silent and the rumble works.
+
+## Testing what can be tested off the hardware
+
+`plugin/parse_test.cpp` compiles the plugin itself and runs its reader over the
+exact bytes the lua writes, so the two halves cannot drift apart unnoticed:
+
+```powershell
+g++ -std=c++17 -O1 -I plugin -I plugin/include -o parse_test.exe plugin/parse_test.cpp -lsetupapi
+.\parse_test.exe
+```
+
+It checks that the lua's output parses, that a settings line is not mistaken for
+levels, that a state line torn before `high=` is rejected rather than guessed at,
+that the v1.0 format still reads, that the state line is still found in an
+oversized file, and that out-of-range values are clamped. Run it before and after
+touching the parser - it covers the half of this that needs no controller.
 
 ## Open items
 

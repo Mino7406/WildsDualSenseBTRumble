@@ -1,8 +1,9 @@
 // Wilds DualSense BT Rumble - REFramework plugin.
 //
 // The companion lua mod reads Capcom's own motor waveform inside the game and
-// publishes the current levels to reframework/data/bt_rumble.txt. This plugin
-// lives in the same process, picks that file up, and writes DualSense Bluetooth
+// publishes the current levels to reframework/data/WildsDualSenseBTRumble.txt, in
+// the same file it keeps its settings in. This plugin lives in the same process,
+// picks those levels up, and writes DualSense Bluetooth
 // output reports straight to the controller - the path Steam Input leaves silent
 // because Wilds only ever drives the USB-only haptic actuators.
 //
@@ -15,6 +16,7 @@
 #include <atomic>
 #include <cstdarg>
 #include <cstdio>
+#include <cstring>
 #include <string>
 #include <thread>
 #include <vector>
@@ -24,8 +26,10 @@
 namespace {
 
 // ---------------------------------------------------------------- logging
-// Written next to the signal file. Without this there is no way to see which
-// step of the worker failed, since the plugin has no UI of its own.
+// Goes to REFramework's own log rather than a file of this mod's own: there is
+// already one log everybody knows to open, and a mod that works should not leave
+// a second one lying in the data folder. Only changes of state are written, so a
+// healthy session says one line and then keeps quiet.
 
 std::wstring gameDir() {
     wchar_t exePath[MAX_PATH] = {};
@@ -37,13 +41,10 @@ std::wstring gameDir() {
     return path;
 }
 
+void (*g_log)(const char*, ...) = nullptr;   // REFramework's, handed over at init
+
 void logLine(const char* format, ...) {
-    static std::wstring path;
-    if (path.empty()) {
-        const std::wstring dir = gameDir();
-        if (dir.empty()) return;
-        path = dir + L"reframework\\data\\WildsDualSenseBTRumble.log";
-    }
+    if (g_log == nullptr) return;
 
     char message[512];
     va_list args;
@@ -51,20 +52,13 @@ void logLine(const char* format, ...) {
     vsnprintf(message, sizeof(message), format, args);
     va_end(args);
 
-    SYSTEMTIME now{};
-    GetLocalTime(&now);
-    char line[640];
-    const int length = snprintf(line, sizeof(line), "[%02d:%02d:%02d.%03d] %s\r\n",
-                                now.wHour, now.wMinute, now.wSecond, now.wMilliseconds, message);
-    if (length <= 0) return;
-
-    HANDLE file = CreateFileW(path.c_str(), FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE,
-                              nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (file == INVALID_HANDLE_VALUE) return;
-    DWORD written = 0;
-    WriteFile(file, line, (DWORD)length, &written, nullptr);
-    CloseHandle(file);
+    g_log("[WildsDualSenseBTRumble] %s", message);
 }
+
+// The pad is looked for once a second. Saying so once a second would be useless
+// noise, so a missing pad is announced on the way in and not again until one has
+// actually been found.
+bool g_announcedMissing = false;
 
 // ---------------------------------------------------------------- HID types
 // Declared here so the build does not depend on where a toolchain keeps the DDK
@@ -348,9 +342,10 @@ public:
                                    attrs.VendorID == kSonyVid && attrs.ProductID == kDualSensePid;
         const bool pathSays = pathLooksLikeDualSense(path);
 
-        // Only the interesting device is traced, so the log stays readable.
+        // Only the first few candidates are traced. This goes into the log the
+        // whole framework shares, so it has to stay out of everyone's way.
         static int traced = 0;
-        const bool trace = candidate && (traced < 3 || (traced % 60) == 0);
+        const bool trace = candidate && traced < 3;
         if (candidate) ++traced;
 
         if (trace) {
@@ -400,6 +395,7 @@ public:
         outputLength_ = outLen;
         bluetooth_    = (inLen == kBluetoothInputLen);
         sequence_     = 0;
+        g_announcedMissing = false;
         logLine("pad opened (%s, matched by %s): inputLen=%u outputLen=%u bluetooth=%s",
                 usedNativeAgain ? "NtCreateFile" : "CreateFileW",
                 attributesSay ? "attributes" : "path",
@@ -413,18 +409,10 @@ public:
         hid.GetHidGuid(&hidGuid);
 
         const std::vector<std::wstring> paths = listHidPathsViaCfgMgr(cm, hidGuid);
-        int candidates = 0;
         for (const std::wstring& path : paths) {
-            if (pathLooksLikeDualSense(path)) ++candidates;
             if (tryPath(hid, path, /*trustAttributes=*/false)) return true;
         }
-
-        static int attempts = 0;
-        if (attempts < 3 || (attempts % 60) == 0) {
-            logLine("cfgmgr32: %d interfaces, %d look like a DualSense, none opened",
-                    (int)paths.size(), candidates);
-        }
-        ++attempts;
+        // Silent: the SetupAPI pass runs next and reports for both of them.
         return false;
     }
 
@@ -465,10 +453,9 @@ public:
             bool match = false;
             USHORT inLen = 0, outLen = 0;
 
-            if (hid.GetAttributes(probe, &attrs) && attrs.VendorID == kSonyVid) {
-                ++sony;
-                logLine("  sony device: vid=%04X pid=%04X", (unsigned)attrs.VendorID, (unsigned)attrs.ProductID);
-            }
+            // Counted, not logged: the summary below carries the number, and this
+            // runs once a second.
+            if (hid.GetAttributes(probe, &attrs) && attrs.VendorID == kSonyVid) ++sony;
 
             if (hid.GetAttributes(probe, &attrs) &&
                 attrs.VendorID == kSonyVid && attrs.ProductID == kDualSensePid) {
@@ -495,21 +482,18 @@ public:
             bluetooth_   = (inLen == kBluetoothInputLen);
             sequence_    = 0;
             found = true;
+            g_announcedMissing = false;
             logLine("pad opened: inputLen=%u outputLen=%u bluetooth=%s",
                     (unsigned)inLen, (unsigned)outLen, bluetooth_ ? "yes" : "no");
             break;
         }
 
         SetupDiDestroyDeviceInfoList(set);
-        if (!found) {
+        if (!found && !g_announcedMissing) {
             // Steam Input hides physical controllers from the game process, so a
             // low count here means enumeration itself is being filtered.
-            // Rate limited: this retries every second and would otherwise flood.
-            static int attempts = 0;
-            if (attempts < 3 || (attempts % 60) == 0) {
-                logLine("pad not found: enumerated=%d opened=%d sonyVid=%d", seen, opened, sony);
-            }
-            ++attempts;
+            g_announcedMissing = true;
+            logLine("no DualSense found: enumerated=%d opened=%d sonyVid=%d", seen, opened, sony);
         }
         return found;
     }
@@ -574,20 +558,51 @@ struct Levels {
     double high = 0.0;
 };
 
+// Reads "name=value" out of a line. The name has to start a word, so looking for
+// "low" does not match the "lowScale" setting sitting a few lines above it.
+bool readField(const std::string& line, const char* name, double& value) {
+    const size_t nameLength = strlen(name);
+    size_t at = 0;
+    while ((at = line.find(name, at)) != std::string::npos) {
+        const size_t after = at + nameLength;
+        const bool startsWord = (at == 0) || line[at - 1] == ' ' || line[at - 1] == '\t';
+        if (startsWord && after < line.size() && line[after] == '=') {
+            return sscanf(line.c_str() + after + 1, "%lf", &value) == 1;
+        }
+        at = after;
+    }
+    return false;
+}
+
 bool parseLine(const char* begin, const char* end, Levels& out) {
     if (begin >= end) return false;
     std::string line(begin, end);
-    int sequence = 0;
+    auto clamp01 = [](double v) { return v < 0.0 ? 0.0 : (v > 1.0 ? 1.0 : v); };
+
+    // Every value on the state line is named, so a settings line - or half of a
+    // line caught mid-rewrite - fails here instead of being read as levels.
+    double sequence = 0.0, low = 0.0, high = 0.0;
+    if (readField(line, "sequence", sequence) &&
+        readField(line, "low", low) &&
+        readField(line, "high", high)) {
+        out.sequence = (int)sequence;
+        out.low  = clamp01(low);
+        out.high = clamp01(high);
+        return true;
+    }
+
+    // v1.0 wrote five bare numbers and nothing else. Still accepted, so a
+    // half-updated install goes on working rather than falling silent.
+    int legacySequence = 0;
     double values[4] = {0, 0, 0, 0};
     if (sscanf(line.c_str(), "%d %lf %lf %lf %lf",
-               &sequence, &values[0], &values[1], &values[2], &values[3]) != 5) {
-        return false;
+               &legacySequence, &values[0], &values[1], &values[2], &values[3]) == 5) {
+        out.sequence = legacySequence;
+        out.low  = clamp01(values[0]);
+        out.high = clamp01(values[1]);
+        return true;
     }
-    auto clamp01 = [](double v) { return v < 0.0 ? 0.0 : (v > 1.0 ? 1.0 : v); };
-    out.sequence = sequence;
-    out.low  = clamp01(values[0]);
-    out.high = clamp01(values[1]);
-    return true;
+    return false;
 }
 
 // Takes the newest complete line, skipping a half-written one at the end: the
@@ -598,7 +613,14 @@ bool readSignal(const std::wstring& path, Levels& out) {
                               nullptr, OPEN_EXISTING, 0, nullptr);
     if (file == INVALID_HANDLE_VALUE) return false;
 
-    char buffer[512];
+    // Only the tail is interesting - the state line is last - and reading from
+    // the end keeps this correct however long the settings block above it grows.
+    char buffer[1024];
+    const DWORD size = GetFileSize(file, nullptr);
+    if (size != INVALID_FILE_SIZE && size > sizeof(buffer) - 1) {
+        SetFilePointer(file, (LONG)(size - (sizeof(buffer) - 1)), nullptr, FILE_BEGIN);
+    }
+
     DWORD read = 0;
     const BOOL ok = ReadFile(file, buffer, sizeof(buffer) - 1, &read, nullptr);
     CloseHandle(file);
@@ -628,29 +650,18 @@ std::atomic<bool> g_running{false};
 std::thread       g_worker;
 
 void workerMain() {
-    logLine("worker started");
-
     HidApi hid;
-    if (!hid.load()) { logLine("FATAL: could not load hid.dll entry points"); return; }
-    logLine("hid.dll loaded");
+    if (!hid.load()) { logLine("no rumble: hid.dll entry points missing"); return; }
 
     CfgMgrApi cm;
-    logLine("cfgmgr32 available: %s", cm.load() ? "yes" : "no");
+    cm.load();
 
     const std::wstring path = signalPath();
-    if (path.empty()) { logLine("FATAL: could not resolve the signal path"); return; }
-    {
-        char narrow[MAX_PATH * 2] = {};
-        WideCharToMultiByte(CP_UTF8, 0, path.c_str(), -1, narrow, sizeof(narrow) - 1, nullptr, nullptr);
-        logLine("signal path: %s", narrow);
-        logLine("signal file present: %s",
-                (GetFileAttributesW(path.c_str()) != INVALID_FILE_ATTRIBUTES) ? "yes" : "no");
-    }
+    if (path.empty()) { logLine("no rumble: could not resolve the state file path"); return; }
 
     PadLink pad;
-    int   ticks = 0;
     int   writeFailures = 0;
-    bool  loggedFirstSignal = false;
+    bool  saidDormant = false;
     Levels current;
     int  lastSequence = -1;
     int  quietTicks   = 0;
@@ -668,19 +679,15 @@ void workerMain() {
 
         // On USB the game's own haptics already work; stay out of the way.
         if (!pad.bluetooth()) {
-            if ((ticks++ % 300) == 0) logLine("pad is on USB - dormant");
+            if (!saidDormant) { saidDormant = true; logLine("pad is on USB - dormant"); }
             pad.disconnect();      // re-enumerate, in case it moves to Bluetooth
             Sleep(1000);
             continue;
         }
+        saidDormant = false;
 
         Levels fresh;
         if (readSignal(path, fresh)) {
-            if (!loggedFirstSignal) {
-                loggedFirstSignal = true;
-                logLine("first signal read: seq=%d low=%.3f high=%.3f",
-                        fresh.sequence, fresh.low, fresh.high);
-            }
             if (fresh.sequence != lastSequence) {
                 lastSequence = fresh.sequence;
                 current = fresh;
@@ -703,18 +710,10 @@ void workerMain() {
             pad.disconnect();      // controller went away; re-enumerate next tick
         }
 
-        // A sparse heartbeat, so a silent log means the worker died rather than
-        // idled. Every five minutes: this ships to other people, and a log that
-        // grows all session is rude.
-        if ((ticks++ % 18750) == 0) {
-            logLine("alive: seq=%d writeFailures=%d", lastSequence, writeFailures);
-        }
-
         Sleep(tickMs);
     }
 
     pad.silence();
-    logLine("worker stopped");
 }
 
 } // namespace
@@ -732,7 +731,7 @@ void reframework_plugin_required_version(REFrameworkPluginVersion* version) {
 
 extern "C" __declspec(dllexport)
 bool reframework_plugin_initialize(const REFrameworkPluginInitializeParam* param) {
-    (void)param;
+    if (param != nullptr && param->functions != nullptr) g_log = param->functions->log_info;
     if (g_running.exchange(true)) return true;   // already started
     g_worker = std::thread(workerMain);
     g_worker.detach();

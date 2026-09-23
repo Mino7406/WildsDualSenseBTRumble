@@ -1,4 +1,4 @@
-Wilds DualSense BT Rumble  v1.0  (한국어판)
+Wilds DualSense BT Rumble  v1.1  (한국어판)
 ==========================================
 
 몬스터 헌터 와일즈에서 듀얼센스를 블루투스로 연결했을 때 사라지는 진동을
@@ -20,6 +20,18 @@ Wilds DualSense BT Rumble  v1.0  (한국어판)
 방식입니다. 그래서 무기 종류나 상황을 가리지 않습니다.
 
 
+
+v1.1에서 바뀐 점
+----------------
+정리만 했습니다. 진동 자체는 그대로입니다.
+
+- 설정과 실시간 모터 세기가 파일 두 개에서 하나로 합쳐졌고, 값마다 고유한
+  이름이 붙었습니다. v1.0 설정은 처음 실행할 때 그대로 옮겨오고, 기존
+  .json 파일은 지워집니다.
+- 모드가 자체 로그 파일을 더는 만들지 않습니다. 남길 말이 있으면 REFramework
+  로그에 적고, 그것도 상태가 바뀔 때만 적습니다.
+
+결과적으로 모드가 남기는 파일이 셋에서 하나로 줄었습니다.
 요구 사항
 ---------
 - PC판 몬스터 헌터 와일즈
@@ -59,8 +71,10 @@ Insert 키로 REFramework 메뉴를 열고 "Wilds DualSense BT Rumble" 항목을
     진동 테스트              샘플 진동을 한 번 재생
 
 기본값은 세기 50%, 강약 대비 1.90, 약한 진동 차단 0.15입니다.
-설정은 reframework/data/WildsDualSenseBTRumble.json 에 저장되어 재시작해도
-유지됩니다.
+설정은 reframework/data/WildsDualSenseBTRumble.txt 에 저장되어 재시작해도
+유지됩니다. 이 파일에는 플러그인이 읽는 실시간 모터 세기도
+함께 들어 있고, 값마다 고유한 이름이 붙어 있습니다. 모드가 쓰는 파일을 둘에서
+하나로 줄인 것입니다.
 
 또렷한 타격이 아니라 계속 웅웅거리는 느낌이라면 **약한 진동 차단**을 올리세요.
 모터가 돌아가는 시간 자체를 줄이는 유일한 손잡이입니다. 세기를 내리는 건
@@ -81,15 +95,15 @@ Insert 키로 REFramework 메뉴를 열고 "Wilds DualSense BT Rumble" 항목을
 - 적응형 트리거는 블루투스에서 여전히 동작하지 않습니다. 같은 USB 오디오
   엔드포인트가 필요해서, 이쪽에서는 해결할 수 없습니다.
 - 듀얼센스만 찾습니다. 다른 컨트롤러는 무시합니다.
-- 문제 해결: 플러그인이 reframework/data/WildsDualSenseBTRumble.log 를
-  남깁니다. 패드를 찾아서 열었는지가 거기 적힙니다.
+- 문제 해결: 플러그인은 REFramework 자체 로그(게임 폴더의
+  re2_framework_log.txt)에 기록합니다. WildsDualSenseBTRumble 로 검색하면
+  패드를 찾아서 열었는지 나옵니다. 정상 동작 중에는 아무것도 남기지 않습니다.
 
 
 제거
 ----
 두 파일을 삭제하면 됩니다. 원한다면 reframework/data 안의
-WildsDualSenseBTRumble.txt, WildsDualSenseBTRumble.json,
-WildsDualSenseBTRumble.log 도 같이 지우세요.
+WildsDualSenseBTRumble.txt 도 같이 지우세요. 모드가 남기는 파일은 그거 하나입니다.
 
 
 동작 원리

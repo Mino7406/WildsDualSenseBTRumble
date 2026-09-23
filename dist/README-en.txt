@@ -1,4 +1,4 @@
-Wilds DualSense BT Rumble  v1.0
+Wilds DualSense BT Rumble  v1.1
 ===============================
 
 Brings controller rumble back to Monster Hunter Wilds when a DualSense is
@@ -20,6 +20,18 @@ not an approximation: every weapon and every situation uses the game's own
 vibration data, triggered by the game's own events.
 
 
+
+WHAT IS NEW IN v1.1
+-------------------
+Housekeeping only - the rumble itself is unchanged.
+
+- Settings and the live motor levels now share one file instead of two, with
+  every value under its own name. Your v1.0 settings are carried over the first
+  time you run it, and the old .json is removed.
+- The mod no longer writes its own log file. Anything worth saying goes into
+  REFramework's log, and only when something changes.
+
+So the mod leaves one file behind now, not three.
 REQUIREMENTS
 ------------
 - Monster Hunter Wilds on PC
@@ -60,7 +72,9 @@ Everything else lives under "Advanced settings":
     Test buzz          fires a sample pulse
 
 Defaults are 50%, Contrast 1.90, Gate 0.15. Settings are saved to
-reframework/data/WildsDualSenseBTRumble.json and survive restarts.
+reframework/data/WildsDualSenseBTRumble.txt and survive restarts. That file also
+carries the live motor levels the plugin reads, each value under its own name, so
+the mod keeps one file rather than two.
 
 If it feels like a constant buzz rather than distinct hits, raise the Gate -
 that is the only control that reduces how much of the time the motors run.
@@ -83,16 +97,16 @@ NOTES
 - Adaptive triggers still do not work over Bluetooth. That needs the same USB
   audio endpoint and cannot be fixed from here.
 - Other controllers are ignored; it looks specifically for a DualSense.
-- Troubleshooting: the plugin writes
-  reframework/data/WildsDualSenseBTRumble.log, which says whether it found and
-  opened the pad.
+- Troubleshooting: the plugin reports into REFramework's own log,
+  re2_framework_log.txt in the game folder. Search it for
+  WildsDualSenseBTRumble to see whether the pad was found and opened. Nothing
+  is written there while it is working normally.
 
 
 UNINSTALL
 ---------
-Delete the two files. Optionally also delete WildsDualSenseBTRumble.txt,
-WildsDualSenseBTRumble.json and WildsDualSenseBTRumble.log from
-reframework/data.
+Delete the two files. Optionally also delete WildsDualSenseBTRumble.txt from
+reframework/data - that is the only thing the mod leaves behind.
 
 
 KOREAN VERSION

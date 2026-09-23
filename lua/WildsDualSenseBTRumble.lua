@@ -12,8 +12,10 @@
 local function try(f, ...) local ok, r = pcall(f, ...) if ok then return r end return nil end
 
 local GENERIC     = "ace.PadVibrationManager`1<app.cADVibration>"
-local OUT_PATH    = "WildsDualSenseBTRumble.txt"
-local CONFIG_FILE = "WildsDualSenseBTRumble.json"
+-- Settings and the live motor levels share one file. Everything in it is written
+-- as name = value, so the two halves can never be read as each other.
+local STATE_FILE  = "WildsDualSenseBTRumble.txt"
+local LEGACY_JSON = "WildsDualSenseBTRumble.json"   -- v1.0 settings, imported once
 local MOTOR_COUNT = 4                 -- LOW, HIGH, LTRIGGER, RTRIGGER
 local MAX_VOICES  = 48
 
@@ -54,8 +56,39 @@ local function say(s) diag[#diag+1] = s; log.info("[btr] " .. s) end
 ----------------------------------------------------------------------
 -- Settings persistence
 ----------------------------------------------------------------------
+-- Fixed, so the file reads the same way every time it is written: pairs() would
+-- shuffle the lines around on every frame.
+local SETTING_ORDER = { "enabled", "strength", "gamma", "gate",
+                        "lowScale", "highScale", "minOutput" }
+
+local function applySetting(k, raw)
+    local cur = settings[k]
+    if cur == nil then return false end
+    if type(cur) == "boolean" then
+        settings[k] = (raw == "1" or raw == "true")
+    else
+        settings[k] = tonumber(raw) or cur
+    end
+    return true
+end
+
 local function loadSettings()
-    local saved = try(json.load_file, CONFIG_FILE)
+    local found = false
+    local f = try(io.open, STATE_FILE, "r")
+    if f then
+        for line in f:lines() do
+            -- Only the first name on a line is read, so the state line - which
+            -- starts with "state" rather than a setting - is passed over.
+            local k, v = line:match("^%s*([%a_][%w_]*)%s*=%s*(%S+)")
+            if k and applySetting(k, v) then found = true end
+        end
+        f:close()
+    end
+    if found then return end
+
+    -- v1.0 kept the settings in their own json. Import it once so updating does
+    -- not throw away whatever the player had dialled in.
+    local saved = try(json.load_file, LEGACY_JSON)
     if type(saved) ~= "table" then return end
     for k, v in pairs(settings) do
         if saved[k] ~= nil then
@@ -66,9 +99,8 @@ local function loadSettings()
             end
         end
     end
+    try(os.remove, LEGACY_JSON)
 end
-
-local function saveSettings() try(json.dump_file, CONFIG_FILE, settings) end
 
 loadSettings()
 
@@ -163,17 +195,47 @@ end
 ----------------------------------------------------------------------
 -- Mix the active voices and publish
 ----------------------------------------------------------------------
+local FILE_HEADER = table.concat({
+    "# Wilds DualSense BT Rumble\n",
+    "#\n",
+    "# Written by the mod - the settings below are what the in-game menu saved,\n",
+    "# and the state line at the bottom is the live motor level the plugin reads.\n",
+    "# Editing the settings by hand works while the game is closed.\n",
+    "\n",
+})
+
+-- Both halves go out together, every frame. The levels have to be written that
+-- often anyway, and the settings cost a few dozen bytes on top of a write that
+-- was already happening - cheaper than keeping a second file in step.
 local function writeState()
-    local f = try(io.open, OUT_PATH, "w")
+    local f = try(io.open, STATE_FILE, "w")
     if not f then return false end
     sequence = (sequence + 1) % 1000000
-    f:write(string.format("%d %.4f %.4f %.4f %.4f\n",
+
+    f:write(FILE_HEADER)
+    for _, k in ipairs(SETTING_ORDER) do
+        local v = settings[k]
+        if type(v) == "boolean" then v = v and 1 or 0 end
+        f:write(string.format("%-9s = %s\n", k, tostring(v)))
+    end
+
+    -- One line, every value named. A read that catches this file mid-rewrite
+    -- either gets the whole line or rejects it, so the plugin can never pair a
+    -- fresh sequence number with a stale level.
+    f:write(string.format(
+        "\nstate sequence=%d low=%.4f high=%.4f ltrigger=%.4f rtrigger=%.4f\n",
         sequence, level[0], level[1], level[2], level[3]))
+
     f:close()
     writes = writes + 1
     for i = 0, MOTOR_COUNT - 1 do lastSent[i] = level[i] end
     return true
 end
+
+-- Settings live in the same file, so saving them is just writing it. Done here
+-- rather than waiting for the next frame: with the mod disabled nothing else
+-- writes, and the change would otherwise be lost on exit.
+local function saveSettings() writeState() end
 
 local function changed()
     for i = 0, MOTOR_COUNT - 1 do
