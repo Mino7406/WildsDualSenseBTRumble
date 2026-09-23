@@ -1,5 +1,7 @@
 # Wilds DualSense BT Rumble
 
+*[한글 설명 보기](README.ko.md)*
+
 Brings controller rumble back to **Monster Hunter Wilds** when a DualSense is connected over Bluetooth.
 
 ## The problem
@@ -8,7 +10,7 @@ Wilds drives a DualSense through the "advanced" haptic path. Those haptics reach
 
 ## What this does
 
-It reads the motor waveform Capcom already authored — intensity, duration, which motor, fade curve — and sends it to the pad over Bluetooth itself.
+It reads the motor waveform Capcom already authored — intensity, duration, which motor, whether it fades out — and sends it to the pad over Bluetooth itself.
 
 This is not an approximation. Every weapon and every situation uses the game's own vibration data, triggered by the game's own events. The mod only observes the game; it changes no behaviour and overwrites no values. It adds delivery over a path that was silent.
 

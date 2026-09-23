@@ -15,7 +15,7 @@ Most other games are unaffected because they send plain rumble, which Bluetooth
 carries fine.
 
 This mod reads the motor waveform Capcom already authored - intensity, duration,
-which motor, fade curve - and sends it to the pad over Bluetooth itself. It is
+which motor, whether it fades out - and sends it to the pad over Bluetooth itself. It is
 not an approximation: every weapon and every situation uses the game's own
 vibration data, triggered by the game's own events.
 
