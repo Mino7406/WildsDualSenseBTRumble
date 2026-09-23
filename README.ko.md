@@ -1,6 +1,6 @@
 # Wilds DualSense BT Rumble
 
-*[Read in English](README.md)*
+*[Read in English](README.md) · [Nexus Mods 페이지](https://www.nexusmods.com/monsterhunterwilds/mods/4944)*
 
 몬스터 헌터 와일즈에서 듀얼센스를 블루투스로 연결했을 때 사라지는 진동을 되살립니다.
 

@@ -1,6 +1,6 @@
 # Wilds DualSense BT Rumble
 
-*[한글 설명 보기](README.ko.md)*
+*[한글 설명 보기](README.ko.md) · [Nexus Mods page](https://www.nexusmods.com/monsterhunterwilds/mods/4944)*
 
 Brings controller rumble back to **Monster Hunter Wilds** when a DualSense is connected over Bluetooth.
 
