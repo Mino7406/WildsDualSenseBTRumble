@@ -67,24 +67,6 @@ The plugin exists because REFramework's lua sandbox cannot reach a HID device, a
 
 ---
 
-## Building
-
-Needs a MinGW-w64 GCC toolchain. Visual Studio is not required — the plugin exposes a C ABI and passes no C++ objects across the boundary.
-
-```bash
-winget install BrechtSanders.WinLibs.POSIX.UCRT
-.\build.ps1
-```
-
-> [!TIP]
-> `build.ps1` fetches the REFramework plugin headers, compiles the DLL, and writes both release archives to `out/`. The English and Korean builds differ by exactly one line — `local LANGUAGE` in the lua — plus the bundled README.
->
-> `-static` matters: without it the DLL needs `libstdc++`, `libgcc` and `libwinpthread` alongside it. As built, it imports only `KERNEL32`, the UCRT `api-ms-win-crt-*` set and `SETUPAPI`.
-
-Protocol details, measured tuning numbers and the open items live in [NOTES.md](NOTES.md).
-
----
-
 ## Settings
 
 In the REFramework menu (Insert), under **Wilds DualSense BT Rumble**.

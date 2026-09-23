@@ -67,24 +67,6 @@ MonsterHunterWilds/
 
 ---
 
-## 빌드
-
-MinGW-w64 GCC 툴체인이 필요합니다. Visual Studio는 필요 없습니다 — 플러그인은 C ABI만 노출하고 경계를 넘나드는 C++ 객체가 없습니다.
-
-```bash
-winget install BrechtSanders.WinLibs.POSIX.UCRT
-.\build.ps1
-```
-
-> [!TIP]
-> `build.ps1`은 REFramework 플러그인 헤더를 받아오고, DLL을 컴파일하고, 두 언어의 릴리즈 압축 파일을 `out/`에 만듭니다. 영어판과 한글판은 lua의 `local LANGUAGE` 한 줄과 동봉된 README만 다릅니다.
->
-> `-static` 옵션이 중요합니다 — 이게 없으면 DLL 옆에 `libstdc++`, `libgcc`, `libwinpthread`가 같이 있어야 합니다. 지금 빌드는 `KERNEL32`, UCRT의 `api-ms-win-crt-*` 세트, `SETUPAPI`만 임포트합니다.
-
-프로토콜 세부사항, 측정한 튜닝 수치, 남은 작업은 [NOTES.md](NOTES.md)에 있습니다.
-
----
-
 ## 설정
 
 REFramework 메뉴(Insert 키)의 **Wilds DualSense BT Rumble** 항목에 있습니다.
