@@ -15,20 +15,28 @@ Defaults after tuning: strength 50%, contrast (gamma) 1.90, gate 0.15.
 rumble itself changed. What changed is what the mod leaves in `reframework/data`,
 three files down to one:
 
-- Settings and the live levels share `WildsDualSenseBTRumble.txt`, every value
-  under its own name. v1.0's `.json` is imported on first run and then deleted.
+- Settings and the live levels share `WildsDualSenseBTRumble.json` — `settings`
+  for what the menu saved, `state` for the levels the plugin reads. That is the
+  file v1.0 already kept settings in, so there is nothing to migrate: the loader
+  takes them from `settings` if that key is there and from the top level if not.
+- `state` is written alone on one line, after the settings. lua rewrites by
+  truncating, so a reader only ever catches a prefix; the settings sit clear of
+  that window, and a torn `state` line fails the all-three-fields test instead of
+  being half-read. The plugin matches `"low"` with its quotes so it cannot pick
+  up `"lowScale"` from the settings above — there is a test for exactly that.
 - The plugin's own `.log` is gone. It reports through REFramework's logger
   instead, and only on a change of state, so a healthy session writes nothing.
-- Both leftovers are cleaned up on update. The lua removes the `.json` after
-  importing it; the plugin deletes the `.log` at startup, and deletes the
-  `.json` as a fallback - but only after it has seen a named state line, which
-  proves the v1.1 lua already had its chance to import it.
+- v1.0's leftovers are deleted on update: the lua removes the orphaned `.txt`,
+  and the plugin removes both it and the `.log` when the worker starts.
+- Strict json is all-or-nothing, so a truncated file would otherwise reset every
+  setting. `scavengeSettings()` is the fallback: if `json.load_file` returns
+  nothing, the values are scraped off the lines with a pattern.
 
 Both halves were checked against each other offline, which covers the parsing but
 not the game. **Smoke-test before publishing:** launch, open the menu, move the
-strength slider, then confirm `WildsDualSenseBTRumble.txt` carries the new value
-and a `state` line whose `sequence` climbs — and that rumble still arrives. If the
-v1.0 settings came across, the old `.json` will have removed itself.
+strength slider, then confirm `WildsDualSenseBTRumble.json` carries the new value
+and a `state` whose `sequence` climbs — and that rumble still arrives. The old
+`.txt` and `.log` should be gone from `reframework/data`.
 
 ## Picking this up on another machine
 
@@ -70,11 +78,12 @@ g++ -std=c++17 -O1 -I plugin -I plugin/include -o parse_test.exe plugin/parse_te
 .\parse_test.exe
 ```
 
-It checks that the lua's output parses, that a settings line is not mistaken for
-levels, that a state line torn before `high=` is rejected rather than guessed at,
-that the v1.0 format still reads, that the state line is still found in an
-oversized file, and that out-of-range values are clamped. Run it before and after
-touching the parser - it covers the half of this that needs no controller.
+Nine checks: that the lua's output parses, that `"lowScale"` is not read as
+`"low"`, that a settings-only file yields nothing, that a `state` torn before
+`"high"` is rejected rather than guessed at, that it is still found in an
+oversized file, that out-of-range values are clamped, and that a v1.0 settings
+file gives no levels. Run it before and after touching the parser - it covers the
+half of this that needs no controller.
 
 ## Open items
 
@@ -82,8 +91,8 @@ touching the parser - it covers the half of this that needs no controller.
 
 This is the one real known gap. `cMotorVibration` carries both
 `_IsTimeAttenuation` and `_TimeAttenuationType`. Only the flag is read
-(`lua/WildsDualSenseBTRumble.lua:119`), so every fading entry decays on a straight
-line (`:207`):
+(`lua/WildsDualSenseBTRumble.lua:155`), so every fading entry decays on a straight
+line (`:276`):
 
 ```lua
 local power = v.atten and (base * (1.0 - v.t / v.dur)) or base
@@ -115,11 +124,11 @@ preset and shaders changed 2026-09-19/20.
 
 ### 3. Release
 
-- Nexus: EN zip as the main file, KR as the optional file. The two differ by one
-  line of lua and the bundled README, both handled by `build.ps1`.
-- A GitHub release tagged `v1.0` with both zips attached is worth doing once the
-  Nexus page exists — deliberately not tagged yet, so the tag does not end up
-  pointing at something that changed before it shipped.
+- The Nexus page is https://www.nexusmods.com/monsterhunterwilds/mods/4944. EN zip
+  is the main file, KR the optional one. The two differ by one line of lua and the
+  bundled README, both handled by `build.ps1`.
+- GitHub carries tags `v1.0` and `v1.1`. Publishing a release is a separate step
+  from tagging, and is deliberately left until a build has been run in the game.
 
 ## Reference: things that cost time to find out
 

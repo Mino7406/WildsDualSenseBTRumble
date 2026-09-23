@@ -25,14 +25,15 @@ WHAT IS NEW IN v1.1
 -------------------
 Housekeeping only - the rumble itself is unchanged.
 
-- Settings and the live motor levels now share one file instead of two, with
-  every value under its own name. Your v1.0 settings are carried over the first
-  time you run it, and the old .json is removed.
+- Settings and the live motor levels now share one file instead of two:
+  WildsDualSenseBTRumble.json, with the settings under "settings" and the live
+  levels under "state". It is the same file v1.0 saved settings in, so yours
+  carry over with nothing to move.
 - The mod no longer writes its own log file. Anything worth saying goes into
   REFramework's log, and only when something changes.
 
-Updating from v1.0 cleans up after itself: the old .json and .log are both
-removed for you, so there is nothing to delete by hand.
+Updating from v1.0 cleans up after itself: the .txt and .log it used to leave in
+reframework/data are both removed for you, so there is nothing to delete by hand.
 
 So the mod leaves one file behind now, not three.
 REQUIREMENTS
@@ -75,8 +76,8 @@ Everything else lives under "Advanced settings":
     Test buzz          fires a sample pulse
 
 Defaults are 50%, Contrast 1.90, Gate 0.15. Settings are saved to
-reframework/data/WildsDualSenseBTRumble.txt and survive restarts. That file also
-carries the live motor levels the plugin reads, each value under its own name, so
+reframework/data/WildsDualSenseBTRumble.json and survive restarts. That file also
+carries the live motor levels the plugin reads, under a "state" key of its own, so
 the mod keeps one file rather than two.
 
 If it feels like a constant buzz rather than distinct hits, raise the Gate -
@@ -108,7 +109,7 @@ NOTES
 
 UNINSTALL
 ---------
-Delete the two files. Optionally also delete WildsDualSenseBTRumble.txt from
+Delete the two files. Optionally also delete WildsDualSenseBTRumble.json from
 reframework/data - that is the only thing the mod leaves behind.
 
 

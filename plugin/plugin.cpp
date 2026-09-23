@@ -1,11 +1,11 @@
 // Wilds DualSense BT Rumble - REFramework plugin.
 //
 // The companion lua mod reads Capcom's own motor waveform inside the game and
-// publishes the current levels to reframework/data/WildsDualSenseBTRumble.txt, in
-// the same file it keeps its settings in. This plugin lives in the same process,
-// picks those levels up, and writes DualSense Bluetooth
-// output reports straight to the controller - the path Steam Input leaves silent
-// because Wilds only ever drives the USB-only haptic actuators.
+// publishes the current levels to reframework/data/WildsDualSenseBTRumble.json,
+// beside the settings it keeps there. This plugin lives in the same process, picks
+// those levels up, and writes DualSense Bluetooth output reports straight to the
+// controller - the path Steam Input leaves silent, because Wilds only ever drives
+// the USB-only haptic actuators.
 //
 // Deliberately small: all the game-side logic stays in lua, where it is easy to
 // change. This only moves bytes to the pad.
@@ -556,21 +556,21 @@ struct Levels {
     int    sequence = -1;
     double low = 0.0;
     double high = 0.0;
-    bool   named = false;   // written by a v1.1 lua rather than a v1.0 one
 };
 
-// Reads "name=value" out of a line. The name has to start a word, so looking for
-// "low" does not match the "lowScale" setting sitting a few lines above it.
+// Reads a "name": value pair out of a line of json. Matching the quotes is what
+// keeps "low" off the "lowScale" setting a few lines above it - a plain substring
+// search would find it there and read the wrong number.
 bool readField(const std::string& line, const char* name, double& value) {
-    const size_t nameLength = strlen(name);
+    const std::string key = std::string("\"") + name + "\"";
     size_t at = 0;
-    while ((at = line.find(name, at)) != std::string::npos) {
-        const size_t after = at + nameLength;
-        const bool startsWord = (at == 0) || line[at - 1] == ' ' || line[at - 1] == '\t';
-        if (startsWord && after < line.size() && line[after] == '=') {
+    while ((at = line.find(key, at)) != std::string::npos) {
+        size_t after = at + key.size();
+        while (after < line.size() && (line[after] == ' ' || line[after] == '\t')) ++after;
+        if (after < line.size() && line[after] == ':') {
             return sscanf(line.c_str() + after + 1, "%lf", &value) == 1;
         }
-        at = after;
+        at += key.size();
     }
     return false;
 }
@@ -580,8 +580,9 @@ bool parseLine(const char* begin, const char* end, Levels& out) {
     std::string line(begin, end);
     auto clamp01 = [](double v) { return v < 0.0 ? 0.0 : (v > 1.0 ? 1.0 : v); };
 
-    // Every value on the state line is named, so a settings line - or half of a
-    // line caught mid-rewrite - fails here instead of being read as levels.
+    // All three have to be on this one line. The state object is written on a line
+    // of its own for exactly that reason: a settings line, or half a line caught
+    // mid-rewrite, falls short here instead of being read as levels.
     double sequence = 0.0, low = 0.0, high = 0.0;
     if (readField(line, "sequence", sequence) &&
         readField(line, "low", low) &&
@@ -589,20 +590,6 @@ bool parseLine(const char* begin, const char* end, Levels& out) {
         out.sequence = (int)sequence;
         out.low  = clamp01(low);
         out.high = clamp01(high);
-        out.named = true;
-        return true;
-    }
-
-    // v1.0 wrote five bare numbers and nothing else. Still accepted, so a
-    // half-updated install goes on working rather than falling silent.
-    int legacySequence = 0;
-    double values[4] = {0, 0, 0, 0};
-    if (sscanf(line.c_str(), "%d %lf %lf %lf %lf",
-               &legacySequence, &values[0], &values[1], &values[2], &values[3]) == 5) {
-        out.sequence = legacySequence;
-        out.low  = clamp01(values[0]);
-        out.high = clamp01(values[1]);
-        out.named = false;
         return true;
     }
     return false;
@@ -644,25 +631,18 @@ bool readSignal(const std::wstring& path, Levels& out) {
 std::wstring signalPath() {
     const std::wstring dir = gameDir();
     if (dir.empty()) return L"";
-    return dir + L"reframework\\data\\WildsDualSenseBTRumble.txt";
+    return dir + L"reframework\\data\\WildsDualSenseBTRumble.json";
 }
 
 // v1.0 kept a log of its own next to the state file. Nothing writes it any more,
 // so anyone updating would be left with a dead file sitting in their data folder.
 // Clearing it here rather than in the lua because this is the half that wrote it.
-void removeLegacyLog() {
+void removeLegacyFiles() {
     const std::wstring dir = gameDir();
     if (dir.empty()) return;
-    DeleteFileW((dir + L"reframework\\data\\WildsDualSenseBTRumble.log").c_str());
-}
-
-// And the v1.0 settings json, but only once the lua has been seen writing the new
-// format - which means it has already imported whatever was in there. Deleting it
-// any earlier could throw away settings the lua had not read yet.
-void removeLegacyJson() {
-    const std::wstring dir = gameDir();
-    if (dir.empty()) return;
-    DeleteFileW((dir + L"reframework\\data\\WildsDualSenseBTRumble.json").c_str());
+    const std::wstring data = dir + L"reframework\\data\\WildsDualSenseBTRumble.";
+    DeleteFileW((data + L"log").c_str());   // v1.0's log; nothing writes it now
+    DeleteFileW((data + L"txt").c_str());   // v1.0's levels file, folded into the json
 }
 
 // ---------------------------------------------------------------- the worker
@@ -671,7 +651,7 @@ std::atomic<bool> g_running{false};
 std::thread       g_worker;
 
 void workerMain() {
-    removeLegacyLog();
+    removeLegacyFiles();
 
     HidApi hid;
     if (!hid.load()) { logLine("no rumble: hid.dll entry points missing"); return; }
@@ -685,7 +665,8 @@ void workerMain() {
     PadLink pad;
     int   writeFailures = 0;
     bool  saidDormant = false;
-    bool  clearedLegacyJson = false;
+    bool  saidNoState = false;
+    int   readFailures = 0;
     Levels current;
     int  lastSequence = -1;
     int  quietTicks   = 0;
@@ -712,13 +693,6 @@ void workerMain() {
 
         Levels fresh;
         if (readSignal(path, fresh)) {
-            // A named line means the v1.1 lua is running, so it has already had
-            // its chance to import the old json. Safe to clear it now, in case
-            // the lua's own os.remove is not available in the sandbox.
-            if (fresh.named && !clearedLegacyJson) {
-                clearedLegacyJson = true;
-                removeLegacyJson();
-            }
             if (fresh.sequence != lastSequence) {
                 lastSequence = fresh.sequence;
                 current = fresh;
@@ -726,8 +700,16 @@ void workerMain() {
             } else if (quietTicks < staleTicks) {
                 ++quietTicks;
             }
-        } else if (quietTicks < staleTicks) {
-            ++quietTicks;
+        } else {
+            // Nothing readable, and nothing readable so far either. The likeliest
+            // cause is a lua from a different release still writing the old shape,
+            // which is otherwise completely silent from in here.
+            if (lastSequence < 0 && !saidNoState && ++readFailures > staleTicks) {
+                saidNoState = true;
+                logLine("no state in the json - is WildsDualSenseBTRumble.lua "
+                        "from the same release as this plugin?");
+            }
+            if (quietTicks < staleTicks) ++quietTicks;
         }
 
         double low = current.low, high = current.high;

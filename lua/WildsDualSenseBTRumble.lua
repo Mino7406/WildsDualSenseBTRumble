@@ -12,10 +12,11 @@
 local function try(f, ...) local ok, r = pcall(f, ...) if ok then return r end return nil end
 
 local GENERIC     = "ace.PadVibrationManager`1<app.cADVibration>"
--- Settings and the live motor levels share one file. Everything in it is written
--- as name = value, so the two halves can never be read as each other.
-local STATE_FILE  = "WildsDualSenseBTRumble.txt"
-local LEGACY_JSON = "WildsDualSenseBTRumble.json"   -- v1.0 settings, imported once
+-- Settings and the live motor levels share one file, under separate keys. This is
+-- the same filename v1.0 kept its settings in, so updating needs nothing moved:
+-- the settings are read back out of it whichever shape they are in.
+local STATE_FILE  = "WildsDualSenseBTRumble.json"
+local LEGACY_TXT  = "WildsDualSenseBTRumble.txt"    -- v1.0 levels file, now unused
 local MOTOR_COUNT = 4                 -- LOW, HIGH, LTRIGGER, RTRIGGER
 local MAX_VOICES  = 48
 
@@ -65,44 +66,47 @@ local function applySetting(k, raw)
     local cur = settings[k]
     if cur == nil then return false end
     if type(cur) == "boolean" then
-        settings[k] = (raw == "1" or raw == "true")
+        settings[k] = (raw == true or raw == "true" or raw == 1 or raw == "1")
     else
         settings[k] = tonumber(raw) or cur
     end
     return true
 end
 
-local function loadSettings()
-    local found = false
+-- Last resort. The file is rewritten by truncating it, so a crash caught mid-write
+-- leaves a prefix - valid settings text inside a json document with no closing
+-- brace, which a strict parser throws out whole. Reading the pairs off the lines
+-- gets them back. It also forgives a stray comma from hand-editing.
+local function scavengeSettings()
     local f = try(io.open, STATE_FILE, "r")
-    if f then
-        for line in f:lines() do
-            -- Only the first name on a line is read, so the state line - which
-            -- starts with "state" rather than a setting - is passed over.
-            local k, v = line:match("^%s*([%a_][%w_]*)%s*=%s*(%S+)")
-            if k and applySetting(k, v) then found = true end
-        end
-        f:close()
+    if not f then return end
+    for line in f:lines() do
+        local k, v = line:match('"([%a_][%w_]*)"%s*:%s*([^,%s}]+)')
+        if k then applySetting(k, v) end
     end
-    if found then return end
-
-    -- v1.0 kept the settings in their own json. Import it once so updating does
-    -- not throw away whatever the player had dialled in.
-    local saved = try(json.load_file, LEGACY_JSON)
-    if type(saved) ~= "table" then return end
-    for k, v in pairs(settings) do
-        if saved[k] ~= nil then
-            if type(v) == "boolean" then
-                settings[k] = saved[k] and true or false
-            else
-                settings[k] = tonumber(saved[k]) or v
-            end
-        end
-    end
-    try(os.remove, LEGACY_JSON)
+    f:close()
 end
 
+local function loadSettings()
+    local saved = try(json.load_file, STATE_FILE)
+    if type(saved) ~= "table" then return scavengeSettings() end
+
+    -- v1.1 keeps the settings under their own key, beside the live state. v1.0
+    -- wrote them bare at the top level. Both are read, so an update carries over
+    -- whatever the player had dialled in and the file needs no migrating.
+    local from = type(saved.settings) == "table" and saved.settings or saved
+    for k in pairs(settings) do
+        if from[k] ~= nil then applySetting(k, from[k]) end
+    end
+end
+
+-- v1.0 published the levels in a file of their own. Nothing reads it now, so it
+-- would just sit there after an update. The plugin clears it too, in case
+-- os.remove is not one of the things this sandbox allows.
+local function removeLegacyFile() try(os.remove, LEGACY_TXT) end
+
 loadSettings()
+removeLegacyFile()
 
 ----------------------------------------------------------------------
 -- Clock
@@ -195,14 +199,14 @@ end
 ----------------------------------------------------------------------
 -- Mix the active voices and publish
 ----------------------------------------------------------------------
-local FILE_HEADER = table.concat({
-    "# Wilds DualSense BT Rumble\n",
-    "#\n",
-    "# Written by the mod - the settings below are what the in-game menu saved,\n",
-    "# and the state line at the bottom is the live motor level the plugin reads.\n",
-    "# Editing the settings by hand works while the game is closed.\n",
-    "\n",
-})
+-- Written by hand rather than through json.dump_file: this runs every frame, and
+-- string.format costs nothing next to building a table and handing it to the
+-- serialiser. %.6g keeps the settings readable and free of exponents, and is the
+-- same text whichever Lua version is underneath.
+local function jsonValue(v)
+    if type(v) == "boolean" then return v and "true" or "false" end
+    return string.format("%.6g", v)
+end
 
 -- Both halves go out together, every frame. The levels have to be written that
 -- often anyway, and the settings cost a few dozen bytes on top of a write that
@@ -212,18 +216,21 @@ local function writeState()
     if not f then return false end
     sequence = (sequence + 1) % 1000000
 
-    f:write(FILE_HEADER)
-    for _, k in ipairs(SETTING_ORDER) do
-        local v = settings[k]
-        if type(v) == "boolean" then v = v and 1 or 0 end
-        f:write(string.format("%-9s = %s\n", k, tostring(v)))
+    -- Settings first. The file is rewritten by truncating, so a reader that
+    -- catches it mid-write sees a prefix; keeping the settings at the front keeps
+    -- them clear of that window.
+    f:write('{\n  "settings": {\n')
+    for i, k in ipairs(SETTING_ORDER) do
+        f:write(string.format('    "%s": %s%s\n', k, jsonValue(settings[k]),
+                              i < #SETTING_ORDER and "," or ""))
     end
+    f:write("  },\n")
 
-    -- One line, every value named. A read that catches this file mid-rewrite
-    -- either gets the whole line or rejects it, so the plugin can never pair a
-    -- fresh sequence number with a stale level.
+    -- The state stays on one line on purpose. The plugin takes the last line that
+    -- carries all of its fields, so it either gets this whole object or rejects
+    -- it - it can never pair a fresh sequence number with a stale level.
     f:write(string.format(
-        "\nstate sequence=%d low=%.4f high=%.4f ltrigger=%.4f rtrigger=%.4f\n",
+        '  "state": {"sequence": %d, "low": %.4f, "high": %.4f, "ltrigger": %.4f, "rtrigger": %.4f}\n}\n',
         sequence, level[0], level[1], level[2], level[3]))
 
     f:close()
