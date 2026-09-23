@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🎮 Wilds DualSense BT Rumble
+# Wilds DualSense BT Rumble
 
 몬스터 헌터 와일즈에서 듀얼센스를 블루투스로 연결했을 때 사라지는 진동을 되살립니다. [REFramework](https://github.com/praydog/REFramework) 기반 플러그인입니다.
 

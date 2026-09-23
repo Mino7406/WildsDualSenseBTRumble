@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🎮 Wilds DualSense BT Rumble
+# Wilds DualSense BT Rumble
 
 Brings controller rumble back to **Monster Hunter Wilds** when a DualSense is connected over Bluetooth. Built on [REFramework](https://github.com/praydog/REFramework).
 
