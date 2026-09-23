@@ -14,21 +14,6 @@ Brings controller rumble back to **Monster Hunter Wilds** when a DualSense is co
 
 </div>
 
-### 목차
-
-| | 문서 | 내용 |
-|:--:|---|---|
-| 🎯 | [The problem](#the-problem) | 블루투스에서 진동이 사라지는 이유 |
-| ✨ | [What this does](#what-this-does) | 이 모드가 실제로 하는 일 |
-| 📦 | [Install](#install) | 설치 경로 |
-| 🧠 | [How it works](#how-it-works) | lua 훅 + 플러그인 구조 |
-| 🛠️ | [Building](#building) | 소스에서 직접 빌드하기 |
-| ⚙️ | [Settings](#settings) | REFramework 메뉴 설정 항목 |
-| ⚠️ | [Limitations](#limitations) | 안 되는 것들 |
-| 🙏 | [Credits](#credits) · [License](#license) | 출처와 라이선스 |
-
----
-
 ## The problem
 
 Wilds drives a DualSense through the "advanced" haptic path. Those haptics reach the controller's voice coils as an audio stream over the USB audio endpoint the pad exposes when it is plugged in.
