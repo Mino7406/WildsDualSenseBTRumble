@@ -16,10 +16,7 @@ Brings controller rumble back to **Monster Hunter Wilds** when a DualSense is co
 
 ## The problem
 
-Wilds drives a DualSense through the "advanced" haptic path. Those haptics reach the controller's voice coils as an audio stream over the USB audio endpoint the pad exposes when it is plugged in.
-
-> [!WARNING]
-> **Over Bluetooth that endpoint does not exist, and Wilds has no ordinary rumble fallback** — so wireless play is completely silent. Most other games are unaffected because they send plain rumble, which Bluetooth carries fine.
+Wilds drives a DualSense through the "advanced" haptic path. Those haptics reach the controller's voice coils as an audio stream over the USB audio endpoint the pad exposes when it is plugged in. **Over Bluetooth that endpoint does not exist, and Wilds has no ordinary rumble fallback** — so wireless play is completely silent. Most other games are unaffected because they send plain rumble, which Bluetooth carries fine.
 
 ---
 
