@@ -52,6 +52,8 @@ winget install BrechtSanders.WinLibs.POSIX.UCRT
 
 `-static` matters: without it the DLL needs `libstdc++`, `libgcc` and `libwinpthread` alongside it. As built, it imports only `KERNEL32`, the UCRT `api-ms-win-crt-*` set and `SETUPAPI`.
 
+Protocol details, measured tuning numbers and the open items live in [NOTES.md](NOTES.md).
+
 ## Settings
 
 In the REFramework menu (Insert), under **Wilds DualSense BT Rumble**.
