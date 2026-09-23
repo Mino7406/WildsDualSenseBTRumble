@@ -19,6 +19,10 @@ three files down to one:
   under its own name. v1.0's `.json` is imported on first run and then deleted.
 - The plugin's own `.log` is gone. It reports through REFramework's logger
   instead, and only on a change of state, so a healthy session writes nothing.
+- Both leftovers are cleaned up on update. The lua removes the `.json` after
+  importing it; the plugin deletes the `.log` at startup, and deletes the
+  `.json` as a fallback - but only after it has seen a named state line, which
+  proves the v1.1 lua already had its chance to import it.
 
 Both halves were checked against each other offline, which covers the parsing but
 not the game. **Smoke-test before publishing:** launch, open the menu, move the

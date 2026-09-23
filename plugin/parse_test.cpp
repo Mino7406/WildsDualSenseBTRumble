@@ -91,6 +91,13 @@ int main() {
     ok = readSignal(p, out);
     check("v1.0 bare-number line still parses", ok && out.sequence == 13 &&
           out.low > 0.2499 && out.low < 0.2501);
+    check("v1.0 line is not mistaken for a v1.1 one", ok && !out.named);
+
+    // The named flag gates deleting the v1.0 json, so it has to be right.
+    p = writeTemp(build(1, 0.0, 0.0, 0.0, 0.0), L"t5b.txt");
+    out = Levels{};
+    ok = readSignal(p, out);
+    check("v1.1 line is recognised as named", ok && out.named);
 
     // 6. a settings block long enough to push the state line past the buffer
     std::string big = build(7, 0.9, 0.1, 0.0, 0.0);

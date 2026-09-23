@@ -31,6 +31,9 @@ Housekeeping only - the rumble itself is unchanged.
 - The mod no longer writes its own log file. Anything worth saying goes into
   REFramework's log, and only when something changes.
 
+Updating from v1.0 cleans up after itself: the old .json and .log are both
+removed for you, so there is nothing to delete by hand.
+
 So the mod leaves one file behind now, not three.
 REQUIREMENTS
 ------------

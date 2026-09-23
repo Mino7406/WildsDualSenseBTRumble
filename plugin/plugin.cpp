@@ -556,6 +556,7 @@ struct Levels {
     int    sequence = -1;
     double low = 0.0;
     double high = 0.0;
+    bool   named = false;   // written by a v1.1 lua rather than a v1.0 one
 };
 
 // Reads "name=value" out of a line. The name has to start a word, so looking for
@@ -588,6 +589,7 @@ bool parseLine(const char* begin, const char* end, Levels& out) {
         out.sequence = (int)sequence;
         out.low  = clamp01(low);
         out.high = clamp01(high);
+        out.named = true;
         return true;
     }
 
@@ -600,6 +602,7 @@ bool parseLine(const char* begin, const char* end, Levels& out) {
         out.sequence = legacySequence;
         out.low  = clamp01(values[0]);
         out.high = clamp01(values[1]);
+        out.named = false;
         return true;
     }
     return false;
@@ -644,12 +647,32 @@ std::wstring signalPath() {
     return dir + L"reframework\\data\\WildsDualSenseBTRumble.txt";
 }
 
+// v1.0 kept a log of its own next to the state file. Nothing writes it any more,
+// so anyone updating would be left with a dead file sitting in their data folder.
+// Clearing it here rather than in the lua because this is the half that wrote it.
+void removeLegacyLog() {
+    const std::wstring dir = gameDir();
+    if (dir.empty()) return;
+    DeleteFileW((dir + L"reframework\\data\\WildsDualSenseBTRumble.log").c_str());
+}
+
+// And the v1.0 settings json, but only once the lua has been seen writing the new
+// format - which means it has already imported whatever was in there. Deleting it
+// any earlier could throw away settings the lua had not read yet.
+void removeLegacyJson() {
+    const std::wstring dir = gameDir();
+    if (dir.empty()) return;
+    DeleteFileW((dir + L"reframework\\data\\WildsDualSenseBTRumble.json").c_str());
+}
+
 // ---------------------------------------------------------------- the worker
 
 std::atomic<bool> g_running{false};
 std::thread       g_worker;
 
 void workerMain() {
+    removeLegacyLog();
+
     HidApi hid;
     if (!hid.load()) { logLine("no rumble: hid.dll entry points missing"); return; }
 
@@ -662,6 +685,7 @@ void workerMain() {
     PadLink pad;
     int   writeFailures = 0;
     bool  saidDormant = false;
+    bool  clearedLegacyJson = false;
     Levels current;
     int  lastSequence = -1;
     int  quietTicks   = 0;
@@ -688,6 +712,13 @@ void workerMain() {
 
         Levels fresh;
         if (readSignal(path, fresh)) {
+            // A named line means the v1.1 lua is running, so it has already had
+            // its chance to import the old json. Safe to clear it now, in case
+            // the lua's own os.remove is not available in the sandbox.
+            if (fresh.named && !clearedLegacyJson) {
+                clearedLegacyJson = true;
+                removeLegacyJson();
+            }
             if (fresh.sequence != lastSequence) {
                 lastSequence = fresh.sequence;
                 current = fresh;
