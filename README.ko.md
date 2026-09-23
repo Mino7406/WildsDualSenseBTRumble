@@ -1,12 +1,42 @@
-# Wilds DualSense BT Rumble
+<div align="center">
+
+# 🎮 Wilds DualSense BT Rumble
+
+몬스터 헌터 와일즈에서 듀얼센스를 블루투스로 연결했을 때 사라지는 진동을 되살립니다. [REFramework](https://github.com/praydog/REFramework) 기반 플러그인입니다.
+
+[![Platform](https://img.shields.io/badge/platform-Windows-0078D6?style=flat-square&logo=windows&logoColor=white)]()
+[![REFramework](https://img.shields.io/badge/REFramework-plugin-5865F2?style=flat-square)](https://github.com/praydog/REFramework)
+[![Nexus Mods](https://img.shields.io/badge/Nexus%20Mods-download-D98F40?style=flat-square)](https://www.nexusmods.com/monsterhunterwilds/mods/4944)
+[![License: MIT](https://img.shields.io/badge/license-MIT-4c1?style=flat-square)](LICENSE)
+![language](https://img.shields.io/badge/docs-한국어-blue?style=flat-square)
 
 *[Read in English](README.md) · [Nexus Mods 페이지](https://www.nexusmods.com/monsterhunterwilds/mods/4944)*
 
-몬스터 헌터 와일즈에서 듀얼센스를 블루투스로 연결했을 때 사라지는 진동을 되살립니다.
+</div>
+
+### 목차
+
+| | 문서 | 내용 |
+|:--:|---|---|
+| 🎯 | [문제](#문제) | 블루투스에서 진동이 사라지는 이유 |
+| ✨ | [하는 일](#하는-일) | 이 모드가 실제로 하는 일 |
+| 📦 | [설치](#설치) | 설치 경로 |
+| 🧠 | [동작 원리](#동작-원리) | lua 훅 + 플러그인 구조 |
+| 🛠️ | [빌드](#빌드) | 소스에서 직접 빌드하기 |
+| ⚙️ | [설정](#설정) | REFramework 메뉴 설정 항목 |
+| ⚠️ | [한계](#한계) | 안 되는 것들 |
+| 🙏 | [크레딧](#크레딧) · [라이선스](#라이선스) | 출처와 라이선스 |
+
+---
 
 ## 문제
 
-와일즈는 듀얼센스에 "고급 햅틱" 경로로 진동을 보냅니다. 이 햅틱은 패드를 USB로 연결했을 때만 생기는 오디오 엔드포인트를 통해 보이스코일로 전달됩니다. **블루투스에는 그 엔드포인트 자체가 없고, 와일즈에는 일반 진동으로 대체하는 경로도 없어서** 무선으로 플레이하면 진동이 완전히 사라집니다. 다른 게임들이 멀쩡한 이유는 대부분 일반 진동을 보내기 때문이고, 그건 블루투스로도 잘 전달됩니다.
+와일즈는 듀얼센스에 "고급 햅틱" 경로로 진동을 보냅니다. 이 햅틱은 패드를 USB로 연결했을 때만 생기는 오디오 엔드포인트를 통해 보이스코일로 전달됩니다.
+
+> [!WARNING]
+> **블루투스에는 그 엔드포인트 자체가 없고, 와일즈에는 일반 진동으로 대체하는 경로도 없어서** 무선으로 플레이하면 진동이 완전히 사라집니다. 다른 게임들이 멀쩡한 이유는 대부분 일반 진동을 보내기 때문이고, 그건 블루투스로도 잘 전달됩니다.
+
+---
 
 ## 하는 일
 
@@ -14,16 +44,25 @@
 
 비슷하게 흉내 낸 게 아닙니다. 모든 무기, 모든 상황에서 게임 자체의 진동 데이터를 게임 자체의 이벤트에 맞춰 그대로 재생합니다. 이 모드는 게임을 관찰하기만 하며, 게임 동작을 바꾸거나 값을 덮어쓰지 않습니다. 원래 조용했던 경로에 전달을 하나 추가할 뿐입니다.
 
+---
+
 ## 설치
 
-릴리즈를 받아 몬스터 헌터 와일즈 폴더에 풀어주세요:
+[Nexus Mods](https://www.nexusmods.com/monsterhunterwilds/mods/4944)나 [GitHub 릴리즈](../../releases)에서 받아 몬스터 헌터 와일즈 폴더에 풀어서 아래 경로가 되도록 넣어주세요:
 
 ```
-MonsterHunterWilds/reframework/autorun/WildsDualSenseBTRumble.lua
-MonsterHunterWilds/reframework/plugins/WildsDualSenseBTRumble.dll
+MonsterHunterWilds/
+└─ reframework/
+   ├─ autorun/
+   │  └─ WildsDualSenseBTRumble.lua
+   └─ plugins/
+      └─ WildsDualSenseBTRumble.dll
 ```
 
-[REFramework](https://github.com/praydog/REFramework)와 블루투스로 연결된 듀얼센스가 필요합니다. 따로 실행할 프로그램도, 설치할 런타임도 없습니다.
+> [!NOTE]
+> [REFramework](https://github.com/praydog/REFramework)와 블루투스로 연결된 듀얼센스가 필요합니다. 따로 실행할 프로그램도, 설치할 런타임도 없습니다 — 게임 실행 시 자동으로 로드됩니다.
+
+---
 
 ## 동작 원리
 
@@ -35,26 +74,34 @@ MonsterHunterWilds/reframework/plugins/WildsDualSenseBTRumble.dll
 
 플러그인이 필요한 이유는 REFramework의 lua 샌드박스가 HID 장치에 접근할 수 없고, 엔진 자체의 모터 경로(`via.hid.GamePadDevice.setMotorPower`)도 똑같이 조용한 햅틱 경로로 흘러가기 때문입니다. 리포트를 직접 쓰는 것 말고는 방법이 없습니다.
 
-### 알아두면 좋은 것 두 가지
+<details>
+<summary>🧩 <b>알아두면 좋은 것 두 가지</b></summary>
 
 **Steam Input은 게임 프로세스에서 컨트롤러를 숨깁니다.** 장치를 여는 것 자체는 막지 않고, HID *조회*를 실패하게 만듭니다 — `HidD_GetAttributes`와 `HidD_GetPreparsedData`가 구조체는 제대로 채워놓고도 `FALSE`를 반환합니다. 그래서 플러그인은 `cfgmgr32`로 열거하고(Steam이 걸러내는 건 SetupAPI 쪽입니다), 인터페이스 경로로 패드를 식별하며, 필요 없는 기능 조회는 아예 요청하지 않고 리포트를 씁니다.
 
 **Lua 파일 IO는 `reframework/data`로 샌드박스되어 있습니다.** lua 코드의 경로들이 파일명만 있는 이유가 이것입니다.
 
+</details>
+
+---
+
 ## 빌드
 
 MinGW-w64 GCC 툴체인이 필요합니다. Visual Studio는 필요 없습니다 — 플러그인은 C ABI만 노출하고 경계를 넘나드는 C++ 객체가 없습니다.
 
-```powershell
+```bash
 winget install BrechtSanders.WinLibs.POSIX.UCRT
 .\build.ps1
 ```
 
-`build.ps1`은 REFramework 플러그인 헤더를 받아오고, DLL을 컴파일하고, 두 언어의 릴리즈 압축 파일을 `out/`에 만듭니다. 영어판과 한글판은 lua의 `local LANGUAGE` 한 줄과 동봉된 README만 다릅니다.
-
-`-static` 옵션이 중요합니다 — 이게 없으면 DLL 옆에 `libstdc++`, `libgcc`, `libwinpthread`가 같이 있어야 합니다. 지금 빌드는 `KERNEL32`, UCRT의 `api-ms-win-crt-*` 세트, `SETUPAPI`만 임포트합니다.
+> [!TIP]
+> `build.ps1`은 REFramework 플러그인 헤더를 받아오고, DLL을 컴파일하고, 두 언어의 릴리즈 압축 파일을 `out/`에 만듭니다. 영어판과 한글판은 lua의 `local LANGUAGE` 한 줄과 동봉된 README만 다릅니다.
+>
+> `-static` 옵션이 중요합니다 — 이게 없으면 DLL 옆에 `libstdc++`, `libgcc`, `libwinpthread`가 같이 있어야 합니다. 지금 빌드는 `KERNEL32`, UCRT의 `api-ms-win-crt-*` 세트, `SETUPAPI`만 임포트합니다.
 
 프로토콜 세부사항, 측정한 튜닝 수치, 남은 작업은 [NOTES.md](NOTES.md)에 있습니다.
+
+---
 
 ## 설정
 
@@ -70,13 +117,18 @@ REFramework 메뉴(Insert 키)의 **Wilds DualSense BT Rumble** 항목에 있습
 | 약한 진동 차단 (Gate) | 이 값보다 약한 원본 진동은 아예 재생하지 않음 |
 | LOW / HIGH | 저주파·고주파 모터를 각각 따로 |
 
-또렷한 타격이 아니라 계속 웅웅거리는 느낌이라면 **약한 진동 차단(Gate)을 올리세요** — 모터가 도는 시간 자체를 줄이는 유일한 손잡이입니다. 세기를 내리는 건 오히려 역효과라 모든 진동이 좁은 구간에 뭉쳐버립니다. 실제로 전투 중 측정했을 때, Gate를 0.15에서 0.30으로 올리자 모터가 도는 시간이 38%에서 21%로 줄어드는 대신 실제 타격은 두 배로 강해졌습니다.
+> [!TIP]
+> 또렷한 타격이 아니라 계속 웅웅거리는 느낌이라면 **약한 진동 차단(Gate)을 올리세요** — 모터가 도는 시간 자체를 줄이는 유일한 손잡이입니다. 세기를 내리는 건 오히려 역효과라 모든 진동이 좁은 구간에 뭉쳐버립니다. 실제로 전투 중 측정했을 때, Gate를 0.15에서 0.30으로 올리자 모터가 도는 시간이 38%에서 21%로 줄어드는 대신 실제 타격은 두 배로 강해졌습니다.
+
+---
 
 ## 한계
 
 - USB 케이블로 연결하면 모드는 스스로 잠듭니다. 그 상태에서는 게임의 진짜 햅틱이 동작하고, 그게 일반 진동보다 낫기 때문입니다.
 - 적응형 트리거는 블루투스에서 여전히 동작하지 않습니다. 같은 USB 오디오 엔드포인트가 필요해서 여기서는 해결할 수 없습니다.
 - 듀얼센스만 찾습니다. 다른 컨트롤러는 무시합니다.
+
+---
 
 ## 크레딧
 
