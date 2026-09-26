@@ -44,19 +44,10 @@ local settings = {
     minOutput = 0.004,
 }
 
--- Confirmed 2026-09-26: map transitions fire a genuine Capcom preset - motor 0,
--- power 0.20, dur 1.80s - not an engine hitch (measured hitches: 0 across the
--- transition that produced it). It clears the ordinary Gate by only 0.05, so it
--- plays for nearly everyone at default settings. It reads as a long ambient/travel
--- rumble rather than a hit, so entries this long need noticeably more power than
--- Gate alone to still count as one.
-local LONG_DUR       = 1.0    -- seconds; only entries at least this long are checked
-local LONG_GATE_MULT = 2.0    -- and need this many times the ordinary Gate to survive
-
 local voices   = {}
 local level    = {}
 local lastSent = {}
-local sequence, writes, decoded, failures, calls, gated = 0, 0, 0, 0, 0, 0
+local sequence, writes, decoded, failures, calls, gated, ambientSkipped = 0, 0, 0, 0, 0, 0, 0
 -- Evidence-gathering for the map-transition rumble report: separate from the
 -- above so a long play session doesn't need the log file to see whether it is
 -- a hitch clearing voices, a genuinely long authored preset, or neither.
@@ -160,14 +151,9 @@ local function isPreset(obj)
     return name == PRESET_TYPE
 end
 
--- Power/duration guessing has now missed twice (a weak-long entry, then a
--- strong-long one from the same field transition) - a threshold cannot tell
--- ambient/travel presets from a real long cue this way. The field dump found
--- _IsDistanceAttenuation, _AttenuationDistance, _NonAttenuationDistance and
--- _VibrationTypeId on the preset itself - exactly what a "this is an ambient
--- effect tied to a nearby world object, not a direct hit" flag would look
--- like. Read the actual values the next time a long preset shows up, to
--- confirm before keying a filter off any of them.
+-- Diagnostic readout for whatever preset triggers the long-preset trip-wire
+-- below - kept after the fix landed so a case isDistAttenuation doesn't cover
+-- is still visible instead of silently reproducing.
 local function describePreset(obj)
     local vtype    = try(function() return obj:get_field("_VibrationTypeId") end)
     local isDist   = try(function() return obj:get_field("_IsDistanceAttenuation") end)
@@ -187,6 +173,15 @@ local function startVoices(preset)
     local n  = mv and try(function() return mv:get_size() end) or 0
     if n == 0 or n > 64 then return false end
 
+    -- Confirmed 2026-09-26: the map-transition rumble report was a preset with
+    -- _IsDistanceAttenuation true (nonAttenDist=20, attenDist=30) - haptic
+    -- feedback tied to how close the player is to some world object (a
+    -- waterfall, machinery, wildlife...), not a direct hit. It reproduced at
+    -- both low power (0.20) and high (0.70), so power/duration cannot tell it
+    -- apart from a real cue; this flag can. Skip it outright rather than
+    -- guessing another power or duration band for it.
+    local isAmbient = try(function() return preset:get_field("_IsDistanceAttenuation") end) and true or false
+
     local started = 0
     local maxDur, maxPower, maxMotor = 0.0, 0.0, -1
     for j = 0, n - 1 do
@@ -198,12 +193,12 @@ local function startVoices(preset)
             local atten = try(function() return e:get_field("_IsTimeAttenuation") end) and true or false
 
             if motor >= 0 and motor < MOTOR_COUNT and power > 0.0 and dur > 0.0 then
+                if isAmbient then
+                    ambientSkipped = ambientSkipped + 1
                 -- Weak entries fire constantly. Left in, they merge into one long
                 -- drone that reads as "too strong" however far the level is turned
-                -- down, so they are dropped rather than scaled. Long entries get a
-                -- stricter bar on top: see LONG_DUR/LONG_GATE_MULT above.
-                local longTail = dur >= LONG_DUR and power < settings.gate * LONG_GATE_MULT
-                if power < settings.gate or longTail then
+                -- down, so they are dropped rather than scaled.
+                elseif power < settings.gate then
                     gated = gated + 1
                 elseif #voices < MAX_VOICES then
                     voices[#voices + 1] = { motor = motor, power = power, dur = dur, t = 0.0, atten = atten }
@@ -213,8 +208,9 @@ local function startVoices(preset)
             end
         end
     end
-    -- Tells a genuinely long authored preset (map-transition ambience, quest
-    -- clear) apart from a stale voice lingering past when it should have ended.
+    -- Kept as a trip-wire: if a genuinely long preset still starts despite the
+    -- ambient check above, that means isDistAttenuation does not cover every
+    -- case, and this is the evidence that will show it.
     if maxDur >= 1.0 then
         longStarts = longStarts + 1
         lastLong = string.format("motor %d  power %.2f  dur %.2fs", maxMotor, maxPower, maxDur)
@@ -380,6 +376,7 @@ local TEXT = {
         clear     = "Clear",
         requests  = "requests      : %d  decoded %d  skipped %d",
         gatedOut  = "gated out     : %d",
+        ambient   = "ambient skip  : %d",
         voices    = "active voices : %d",
         written   = "lines written : %d",
         output    = "OUTPUT  LOW %.3f   HIGH %.3f",
@@ -401,6 +398,7 @@ local TEXT = {
         clear     = "초기화",
         requests  = "진동 요청   : %d  해석 %d  건너뜀 %d",
         gatedOut  = "차단된 진동 : %d",
+        ambient   = "환경음 차단 : %d",
         voices    = "재생 중     : %d",
         written   = "전송 횟수   : %d",
         output    = "출력  저주파 %.3f   고주파 %.3f",
@@ -471,6 +469,7 @@ re.on_draw_ui(function()
         for _, l in ipairs(diag) do imgui.text(l) end
         imgui.text(string.format(t.requests, calls, decoded, failures))
         imgui.text(string.format(t.gatedOut, gated))
+        imgui.text(string.format(t.ambient, ambientSkipped))
         imgui.text(string.format(t.voices, #voices))
         imgui.text(string.format(t.written, writes))
         imgui.text(string.format(t.output, level[0], level[1]))
@@ -480,7 +479,7 @@ re.on_draw_ui(function()
 
         if imgui.button(t.clear) then
             calls = 0; decoded = 0; failures = 0; gated = 0; writes = 0
-            hitches = 0; longStarts = 0
+            hitches = 0; longStarts = 0; ambientSkipped = 0
             lastHitch = "(none yet)"; lastLong = "(none yet)"; lastLongFields = "(none yet)"
         end
 
