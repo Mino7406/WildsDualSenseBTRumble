@@ -162,19 +162,24 @@ end
 
 -- Power/duration guessing has now missed twice (a weak-long entry, then a
 -- strong-long one from the same field transition) - a threshold cannot tell
--- ambient/travel presets from a real long cue this way. Read what identifies
--- the preset itself instead, the next time a long one shows up, so the real
--- fix can key off that rather than another guessed number.
-local function dumpFields(obj)
-    local td = try(function() return obj:get_type_definition() end)
-    if not td then return "<no type definition>" end
-    local names = {}
-    for _, f in ipairs(try(function() return td:get_fields() end) or {}) do
-        local nm = try(function() return f:get_name() end)
-        if nm then names[#names + 1] = nm end
-    end
-    if #names == 0 then return "<no fields found>" end
-    return table.concat(names, ", ")
+-- ambient/travel presets from a real long cue this way. The field dump found
+-- _IsDistanceAttenuation, _AttenuationDistance, _NonAttenuationDistance and
+-- _VibrationTypeId on the preset itself - exactly what a "this is an ambient
+-- effect tied to a nearby world object, not a direct hit" flag would look
+-- like. Read the actual values the next time a long preset shows up, to
+-- confirm before keying a filter off any of them.
+local function describePreset(obj)
+    local vtype    = try(function() return obj:get_field("_VibrationTypeId") end)
+    local isDist   = try(function() return obj:get_field("_IsDistanceAttenuation") end)
+    local nonAtten = try(function() return obj:get_field("_NonAttenuationDistance") end)
+    local atten    = try(function() return obj:get_field("_AttenuationDistance") end)
+    local distType = try(function() return obj:get_field("_DistanceAttenuationType") end)
+    local guid     = try(function() return obj:get_field("_Guid") end)
+    local guidStr  = guid and try(function() return guid:call("ToString") end) or nil
+    return string.format(
+        "vibTypeId=%s  isDistAtten=%s  nonAttenDist=%s  attenDist=%s  distAttenType=%s  guid=%s",
+        tostring(vtype), tostring(isDist), tostring(nonAtten), tostring(atten), tostring(distType),
+        tostring(guidStr or "?"))
 end
 
 local function startVoices(preset)
@@ -213,9 +218,9 @@ local function startVoices(preset)
     if maxDur >= 1.0 then
         longStarts = longStarts + 1
         lastLong = string.format("motor %d  power %.2f  dur %.2fs", maxMotor, maxPower, maxDur)
-        lastLongFields = dumpFields(preset)
+        lastLongFields = describePreset(preset)
         log.info("[btr] long preset: " .. lastLong)
-        log.info("[btr] long preset fields: " .. lastLongFields)
+        log.info("[btr] long preset info: " .. lastLongFields)
     end
     return started > 0
 end
@@ -380,7 +385,7 @@ local TEXT = {
         output    = "OUTPUT  LOW %.3f   HIGH %.3f",
         hitches   = "hitches       : %d  (%s)",
         longs     = "long presets  : %d  (%s)",
-        longFields= "  preset fields: %s",
+        longFields= "  preset info  : %s",
     },
     ko = {
         enabled   = "사용",
@@ -401,7 +406,7 @@ local TEXT = {
         output    = "출력  저주파 %.3f   고주파 %.3f",
         hitches   = "끊김 감지   : %d  (%s)",
         longs     = "긴 진동     : %d  (%s)",
-        longFields= "  프리셋 필드: %s",
+        longFields= "  프리셋 정보 : %s",
     },
 }
 
