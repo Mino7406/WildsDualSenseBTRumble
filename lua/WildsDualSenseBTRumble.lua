@@ -48,11 +48,6 @@ local voices   = {}
 local level    = {}
 local lastSent = {}
 local sequence, writes, decoded, failures, calls, gated, ambientSkipped = 0, 0, 0, 0, 0, 0, 0
--- Evidence-gathering for the map-transition rumble report: separate from the
--- above so a long play session doesn't need the log file to see whether it is
--- a hitch clearing voices, a genuinely long authored preset, or neither.
-local hitches, longStarts = 0, 0
-local lastHitch, lastLong, lastLongFields = "(none yet)", "(none yet)", "(none yet)"
 local diag = {}
 
 for i = 0, MOTOR_COUNT - 1 do level[i] = 0.0; lastSent[i] = -1.0 end
@@ -124,15 +119,14 @@ local lastClock = clockNow or 0
 -- the caller drops every active voice rather than decaying it, because pretending
 -- only 1/60s passed is what used to make a rumble that was mid-flight when the
 -- stall began keep buzzing throughout it - the gap is stale time, not slow time.
--- Third return value is the raw gap, for logging only.
 local function delta()
-    if not hasClock then return 1.0 / 60.0, false, 0.0 end
+    if not hasClock then return 1.0 / 60.0, false end
     local now = try(function() return os.clock() end) or lastClock
     local dt = now - lastClock
     lastClock = now
-    if dt <= 0.0 then return 1.0 / 60.0, false, dt end
-    if dt > 0.25 then return 1.0 / 60.0, true, dt end
-    return dt, false, dt
+    if dt <= 0.0 then return 1.0 / 60.0, false end
+    if dt > 0.25 then return 1.0 / 60.0, true end
+    return dt, false
 end
 
 ----------------------------------------------------------------------
@@ -151,23 +145,6 @@ local function isPreset(obj)
     return name == PRESET_TYPE
 end
 
--- Diagnostic readout for whatever preset triggers the long-preset trip-wire
--- below - kept after the fix landed so a case isDistAttenuation doesn't cover
--- is still visible instead of silently reproducing.
-local function describePreset(obj)
-    local vtype    = try(function() return obj:get_field("_VibrationTypeId") end)
-    local isDist   = try(function() return obj:get_field("_IsDistanceAttenuation") end)
-    local nonAtten = try(function() return obj:get_field("_NonAttenuationDistance") end)
-    local atten    = try(function() return obj:get_field("_AttenuationDistance") end)
-    local distType = try(function() return obj:get_field("_DistanceAttenuationType") end)
-    local guid     = try(function() return obj:get_field("_Guid") end)
-    local guidStr  = guid and try(function() return guid:call("ToString") end) or nil
-    return string.format(
-        "vibTypeId=%s  isDistAtten=%s  nonAttenDist=%s  attenDist=%s  distAttenType=%s  guid=%s",
-        tostring(vtype), tostring(isDist), tostring(nonAtten), tostring(atten), tostring(distType),
-        tostring(guidStr or "?"))
-end
-
 local function startVoices(preset)
     local mv = try(function() return preset:get_field("_MotorVibration") end)
     local n  = mv and try(function() return mv:get_size() end) or 0
@@ -183,7 +160,6 @@ local function startVoices(preset)
     local isAmbient = try(function() return preset:get_field("_IsDistanceAttenuation") end) and true or false
 
     local started = 0
-    local maxDur, maxPower, maxMotor = 0.0, 0.0, -1
     for j = 0, n - 1 do
         local e = try(function() return mv:get_element(j) end)
         if e then
@@ -203,20 +179,9 @@ local function startVoices(preset)
                 elseif #voices < MAX_VOICES then
                     voices[#voices + 1] = { motor = motor, power = power, dur = dur, t = 0.0, atten = atten }
                     started = started + 1
-                    if dur > maxDur then maxDur, maxPower, maxMotor = dur, power, motor end
                 end
             end
         end
-    end
-    -- Kept as a trip-wire: if a genuinely long preset still starts despite the
-    -- ambient check above, that means isDistAttenuation does not cover every
-    -- case, and this is the evidence that will show it.
-    if maxDur >= 1.0 then
-        longStarts = longStarts + 1
-        lastLong = string.format("motor %d  power %.2f  dur %.2fs", maxMotor, maxPower, maxDur)
-        lastLongFields = describePreset(preset)
-        log.info("[btr] long preset: " .. lastLong)
-        log.info("[btr] long preset info: " .. lastLongFields)
     end
     return started > 0
 end
@@ -311,16 +276,11 @@ end
 local sinceWrite = 0
 
 re.on_frame(function()
-    local dt, hitch, rawDt = delta()
+    local dt, hitch = delta()
 
     for i = 0, MOTOR_COUNT - 1 do level[i] = 0.0 end
 
-    if hitch then
-        hitches = hitches + 1
-        lastHitch = string.format("gap %.2fs, cleared %d voice(s)", rawDt, #voices)
-        log.info("[btr] hitch: " .. lastHitch)
-        voices = {}
-    end
+    if hitch then voices = {} end
 
     local keep = {}
     for _, v in ipairs(voices) do
@@ -380,9 +340,6 @@ local TEXT = {
         voices    = "active voices : %d",
         written   = "lines written : %d",
         output    = "OUTPUT  LOW %.3f   HIGH %.3f",
-        hitches   = "hitches       : %d  (%s)",
-        longs     = "long presets  : %d  (%s)",
-        longFields= "  preset info  : %s",
     },
     ko = {
         enabled   = "사용",
@@ -402,9 +359,6 @@ local TEXT = {
         voices    = "재생 중     : %d",
         written   = "전송 횟수   : %d",
         output    = "출력  저주파 %.3f   고주파 %.3f",
-        hitches   = "끊김 감지   : %d  (%s)",
-        longs     = "긴 진동     : %d  (%s)",
-        longFields= "  프리셋 정보 : %s",
     },
 }
 
@@ -473,14 +427,9 @@ re.on_draw_ui(function()
         imgui.text(string.format(t.voices, #voices))
         imgui.text(string.format(t.written, writes))
         imgui.text(string.format(t.output, level[0], level[1]))
-        imgui.text(string.format(t.hitches, hitches, lastHitch))
-        imgui.text(string.format(t.longs, longStarts, lastLong))
-        imgui.text(string.format(t.longFields, lastLongFields))
 
         if imgui.button(t.clear) then
-            calls = 0; decoded = 0; failures = 0; gated = 0; writes = 0
-            hitches = 0; longStarts = 0; ambientSkipped = 0
-            lastHitch = "(none yet)"; lastLong = "(none yet)"; lastLongFields = "(none yet)"
+            calls = 0; decoded = 0; failures = 0; gated = 0; writes = 0; ambientSkipped = 0
         end
 
         imgui.tree_pop()
