@@ -87,24 +87,34 @@ half of this that needs no controller.
 
 ## Open items
 
-### 1. Fixed: rumble lingering through map transitions / loading screens (2026-09-26)
+### 1. Fixed: ambient/distance-attenuated rumble on map transitions (2026-09-26)
 
 Nexus feedback (Helcyin, 4944): random, sometimes-long rumble during map
-transitions and loading screens. Root cause was `delta()`
-(`lua/WildsDualSenseBTRumble.lua`): on a real stall - engine hitch or a loading
-screen where `on_frame` gaps by more than 0.25s of `os.clock()` - it substituted
-an assumed `1/60`s instead of the real gap. Any voice active when the stall began
-barely decayed (`v.t` advanced by the assumed tiny amount, not the real elapsed
-time), so it kept buzzing for the whole stall/load and then continued afterward
-for its now-almost-full remaining duration. Duration was "random" because it
-tracked how long that particular load happened to take, not anything about the
-preset.
+transitions and loading screens. Confirmed on hardware, through three rounds of
+evidence-gathering in `lua/WildsDualSenseBTRumble.lua`:
 
-Fix: `delta()` now also returns whether the gap was a stall; `on_frame` clears
-`voices` outright when it is, instead of letting them decay in slow motion.
-**Not yet confirmed on hardware** - needs a map transition with the pad connected
-to be sure it kills the phantom rumble without cutting real combat rumble that
-happens to land on an ordinary hitch.
+1. First guess - an engine hitch clamping `delta()`'s assumed dt so a stale
+   voice would decay in slow motion - was wrong. Measured hitches: 0 across a
+   transition that reproduced the bug.
+2. Second guess - a weak, long preset (`motor 0 power 0.20 dur 1.80s`) clearing
+   the default Gate by only 0.05 - explained that one instance, but the very
+   next reproduction was strong (`power 0.70 dur 5.00s`), which no power/gate
+   threshold could also catch.
+3. Reading the preset object's own fields (not guessing a number) found the
+   real cause: `_IsDistanceAttenuation = true`, `_NonAttenuationDistance = 20`,
+   `_AttenuationDistance = 30`. It is haptic feedback tied to the player's
+   distance from some world object (want a waterfall, machinery, wildlife -
+   not confirmed which), not a direct hit. That explains why it reproduced at
+   both power levels and why it clustered around transitions: the player
+   passes near the trigger object while traveling.
+
+Fix: `startVoices()` reads `_IsDistanceAttenuation` directly and skips those
+presets outright, counted separately in the diagnostic panel as "ambient skip"
+/ "환경음 차단". This replaced the power/duration guess entirely rather than
+stacking a third heuristic on it. The hitch-clear from round 1 stayed in
+(harmless, just not the cause of this report). Confirmed via the mod's own
+diagnostic panel; not yet confirmed that it doesn't also eat any wanted long
+combat cue, since none has been observed yet.
 
 ### 2. Fade curves are linear; the game's are not
 
