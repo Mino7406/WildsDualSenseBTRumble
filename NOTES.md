@@ -87,7 +87,26 @@ half of this that needs no controller.
 
 ## Open items
 
-### 1. Fade curves are linear; the game's are not
+### 1. Fixed: rumble lingering through map transitions / loading screens (2026-09-26)
+
+Nexus feedback (Helcyin, 4944): random, sometimes-long rumble during map
+transitions and loading screens. Root cause was `delta()`
+(`lua/WildsDualSenseBTRumble.lua`): on a real stall - engine hitch or a loading
+screen where `on_frame` gaps by more than 0.25s of `os.clock()` - it substituted
+an assumed `1/60`s instead of the real gap. Any voice active when the stall began
+barely decayed (`v.t` advanced by the assumed tiny amount, not the real elapsed
+time), so it kept buzzing for the whole stall/load and then continued afterward
+for its now-almost-full remaining duration. Duration was "random" because it
+tracked how long that particular load happened to take, not anything about the
+preset.
+
+Fix: `delta()` now also returns whether the gap was a stall; `on_frame` clears
+`voices` outright when it is, instead of letting them decay in slow motion.
+**Not yet confirmed on hardware** - needs a map transition with the pad connected
+to be sure it kills the phantom rumble without cutting real combat rumble that
+happens to land on an ordinary hitch.
+
+### 2. Fade curves are linear; the game's are not
 
 This is the one real known gap. `cMotorVibration` carries both
 `_IsTimeAttenuation` and `_TimeAttenuationType`. Only the flag is read
@@ -106,7 +125,7 @@ Fix: dump the `EaseType` enum from the TDB, map its values to the matching curve
 and apply that instead of the linear term. Everything else in the pipeline already
 carries the per-voice data needed.
 
-### 2. Crashes seen 2026-09-19..22 — not caused by this mod
+### 3. Crashes seen 2026-09-19..22 — not caused by this mod
 
 Established from WER `Report.wer`, which carries the faulting offset and the full
 `LoadedModule[]` list — far better evidence than the Application event log, whose
@@ -122,7 +141,7 @@ from — Steam's verify does not touch that folder.
 `0b009a2a` again means the same bug; the next thing to look at is the ReShade
 preset and shaders changed 2026-09-19/20.
 
-### 3. Release
+### 4. Release
 
 - The Nexus page is https://www.nexusmods.com/monsterhunterwilds/mods/4944. EN zip
   is the main file, KR the optional one. The two differ by one line of lua and the

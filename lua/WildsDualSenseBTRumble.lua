@@ -115,13 +115,18 @@ local clockNow  = try(function() return os.clock() end)
 local hasClock  = (clockNow ~= nil)
 local lastClock = clockNow or 0
 
+-- Second return value is true on a big gap (a loading screen or a real stall):
+-- the caller drops every active voice rather than decaying it, because pretending
+-- only 1/60s passed is what used to make a rumble that was mid-flight when the
+-- stall began keep buzzing throughout it - the gap is stale time, not slow time.
 local function delta()
-    if not hasClock then return 1.0 / 60.0 end
+    if not hasClock then return 1.0 / 60.0, false end
     local now = try(function() return os.clock() end) or lastClock
     local dt = now - lastClock
     lastClock = now
-    if dt <= 0.0 or dt > 0.25 then return 1.0 / 60.0 end   -- guard against hitches
-    return dt
+    if dt <= 0.0 then return 1.0 / 60.0, false end
+    if dt > 0.25 then return 1.0 / 60.0, true end
+    return dt, false
 end
 
 ----------------------------------------------------------------------
@@ -260,9 +265,11 @@ end
 local sinceWrite = 0
 
 re.on_frame(function()
-    local dt = delta()
+    local dt, hitch = delta()
 
     for i = 0, MOTOR_COUNT - 1 do level[i] = 0.0 end
+
+    if hitch then voices = {} end
 
     local keep = {}
     for _, v in ipairs(voices) do
