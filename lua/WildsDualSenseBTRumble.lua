@@ -48,6 +48,11 @@ local voices   = {}
 local level    = {}
 local lastSent = {}
 local sequence, writes, decoded, failures, calls, gated = 0, 0, 0, 0, 0, 0
+-- Evidence-gathering for the map-transition rumble report: separate from the
+-- above so a long play session doesn't need the log file to see whether it is
+-- a hitch clearing voices, a genuinely long authored preset, or neither.
+local hitches, longStarts = 0, 0
+local lastHitch, lastLong  = "(none yet)", "(none yet)"
 local diag = {}
 
 for i = 0, MOTOR_COUNT - 1 do level[i] = 0.0; lastSent[i] = -1.0 end
@@ -119,14 +124,15 @@ local lastClock = clockNow or 0
 -- the caller drops every active voice rather than decaying it, because pretending
 -- only 1/60s passed is what used to make a rumble that was mid-flight when the
 -- stall began keep buzzing throughout it - the gap is stale time, not slow time.
+-- Third return value is the raw gap, for logging only.
 local function delta()
-    if not hasClock then return 1.0 / 60.0, false end
+    if not hasClock then return 1.0 / 60.0, false, 0.0 end
     local now = try(function() return os.clock() end) or lastClock
     local dt = now - lastClock
     lastClock = now
-    if dt <= 0.0 then return 1.0 / 60.0, false end
-    if dt > 0.25 then return 1.0 / 60.0, true end
-    return dt, false
+    if dt <= 0.0 then return 1.0 / 60.0, false, dt end
+    if dt > 0.25 then return 1.0 / 60.0, true, dt end
+    return dt, false, dt
 end
 
 ----------------------------------------------------------------------
@@ -151,6 +157,7 @@ local function startVoices(preset)
     if n == 0 or n > 64 then return false end
 
     local started = 0
+    local maxDur, maxPower, maxMotor = 0.0, 0.0, -1
     for j = 0, n - 1 do
         local e = try(function() return mv:get_element(j) end)
         if e then
@@ -168,9 +175,17 @@ local function startVoices(preset)
                 elseif #voices < MAX_VOICES then
                     voices[#voices + 1] = { motor = motor, power = power, dur = dur, t = 0.0, atten = atten }
                     started = started + 1
+                    if dur > maxDur then maxDur, maxPower, maxMotor = dur, power, motor end
                 end
             end
         end
+    end
+    -- Tells a genuinely long authored preset (map-transition ambience, quest
+    -- clear) apart from a stale voice lingering past when it should have ended.
+    if maxDur >= 1.0 then
+        longStarts = longStarts + 1
+        lastLong = string.format("motor %d  power %.2f  dur %.2fs", maxMotor, maxPower, maxDur)
+        log.info("[btr] long preset: " .. lastLong)
     end
     return started > 0
 end
@@ -265,11 +280,16 @@ end
 local sinceWrite = 0
 
 re.on_frame(function()
-    local dt, hitch = delta()
+    local dt, hitch, rawDt = delta()
 
     for i = 0, MOTOR_COUNT - 1 do level[i] = 0.0 end
 
-    if hitch then voices = {} end
+    if hitch then
+        hitches = hitches + 1
+        lastHitch = string.format("gap %.2fs, cleared %d voice(s)", rawDt, #voices)
+        log.info("[btr] hitch: " .. lastHitch)
+        voices = {}
+    end
 
     local keep = {}
     for _, v in ipairs(voices) do
@@ -328,6 +348,8 @@ local TEXT = {
         voices    = "active voices : %d",
         written   = "lines written : %d",
         output    = "OUTPUT  LOW %.3f   HIGH %.3f",
+        hitches   = "hitches       : %d  (%s)",
+        longs     = "long presets  : %d  (%s)",
     },
     ko = {
         enabled   = "사용",
@@ -346,6 +368,8 @@ local TEXT = {
         voices    = "재생 중     : %d",
         written   = "전송 횟수   : %d",
         output    = "출력  저주파 %.3f   고주파 %.3f",
+        hitches   = "끊김 감지   : %d  (%s)",
+        longs     = "긴 진동     : %d  (%s)",
     },
 }
 
@@ -413,9 +437,13 @@ re.on_draw_ui(function()
         imgui.text(string.format(t.voices, #voices))
         imgui.text(string.format(t.written, writes))
         imgui.text(string.format(t.output, level[0], level[1]))
+        imgui.text(string.format(t.hitches, hitches, lastHitch))
+        imgui.text(string.format(t.longs, longStarts, lastLong))
 
         if imgui.button(t.clear) then
             calls = 0; decoded = 0; failures = 0; gated = 0; writes = 0
+            hitches = 0; longStarts = 0
+            lastHitch = "(none yet)"; lastLong = "(none yet)"
         end
 
         imgui.tree_pop()
