@@ -61,7 +61,7 @@ local sequence, writes, decoded, failures, calls, gated = 0, 0, 0, 0, 0, 0
 -- above so a long play session doesn't need the log file to see whether it is
 -- a hitch clearing voices, a genuinely long authored preset, or neither.
 local hitches, longStarts = 0, 0
-local lastHitch, lastLong  = "(none yet)", "(none yet)"
+local lastHitch, lastLong, lastLongFields = "(none yet)", "(none yet)", "(none yet)"
 local diag = {}
 
 for i = 0, MOTOR_COUNT - 1 do level[i] = 0.0; lastSent[i] = -1.0 end
@@ -160,6 +160,23 @@ local function isPreset(obj)
     return name == PRESET_TYPE
 end
 
+-- Power/duration guessing has now missed twice (a weak-long entry, then a
+-- strong-long one from the same field transition) - a threshold cannot tell
+-- ambient/travel presets from a real long cue this way. Read what identifies
+-- the preset itself instead, the next time a long one shows up, so the real
+-- fix can key off that rather than another guessed number.
+local function dumpFields(obj)
+    local td = try(function() return obj:get_type_definition() end)
+    if not td then return "<no type definition>" end
+    local names = {}
+    for _, f in ipairs(try(function() return td:get_fields() end) or {}) do
+        local nm = try(function() return f:get_name() end)
+        if nm then names[#names + 1] = nm end
+    end
+    if #names == 0 then return "<no fields found>" end
+    return table.concat(names, ", ")
+end
+
 local function startVoices(preset)
     local mv = try(function() return preset:get_field("_MotorVibration") end)
     local n  = mv and try(function() return mv:get_size() end) or 0
@@ -196,7 +213,9 @@ local function startVoices(preset)
     if maxDur >= 1.0 then
         longStarts = longStarts + 1
         lastLong = string.format("motor %d  power %.2f  dur %.2fs", maxMotor, maxPower, maxDur)
+        lastLongFields = dumpFields(preset)
         log.info("[btr] long preset: " .. lastLong)
+        log.info("[btr] long preset fields: " .. lastLongFields)
     end
     return started > 0
 end
@@ -361,6 +380,7 @@ local TEXT = {
         output    = "OUTPUT  LOW %.3f   HIGH %.3f",
         hitches   = "hitches       : %d  (%s)",
         longs     = "long presets  : %d  (%s)",
+        longFields= "  preset fields: %s",
     },
     ko = {
         enabled   = "사용",
@@ -381,6 +401,7 @@ local TEXT = {
         output    = "출력  저주파 %.3f   고주파 %.3f",
         hitches   = "끊김 감지   : %d  (%s)",
         longs     = "긴 진동     : %d  (%s)",
+        longFields= "  프리셋 필드: %s",
     },
 }
 
@@ -450,11 +471,12 @@ re.on_draw_ui(function()
         imgui.text(string.format(t.output, level[0], level[1]))
         imgui.text(string.format(t.hitches, hitches, lastHitch))
         imgui.text(string.format(t.longs, longStarts, lastLong))
+        imgui.text(string.format(t.longFields, lastLongFields))
 
         if imgui.button(t.clear) then
             calls = 0; decoded = 0; failures = 0; gated = 0; writes = 0
             hitches = 0; longStarts = 0
-            lastHitch = "(none yet)"; lastLong = "(none yet)"
+            lastHitch = "(none yet)"; lastLong = "(none yet)"; lastLongFields = "(none yet)"
         end
 
         imgui.tree_pop()
