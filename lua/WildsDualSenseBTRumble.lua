@@ -44,6 +44,15 @@ local settings = {
     minOutput = 0.004,
 }
 
+-- Confirmed 2026-09-26: map transitions fire a genuine Capcom preset - motor 0,
+-- power 0.20, dur 1.80s - not an engine hitch (measured hitches: 0 across the
+-- transition that produced it). It clears the ordinary Gate by only 0.05, so it
+-- plays for nearly everyone at default settings. It reads as a long ambient/travel
+-- rumble rather than a hit, so entries this long need noticeably more power than
+-- Gate alone to still count as one.
+local LONG_DUR       = 1.0    -- seconds; only entries at least this long are checked
+local LONG_GATE_MULT = 2.0    -- and need this many times the ordinary Gate to survive
+
 local voices   = {}
 local level    = {}
 local lastSent = {}
@@ -169,8 +178,10 @@ local function startVoices(preset)
             if motor >= 0 and motor < MOTOR_COUNT and power > 0.0 and dur > 0.0 then
                 -- Weak entries fire constantly. Left in, they merge into one long
                 -- drone that reads as "too strong" however far the level is turned
-                -- down, so they are dropped rather than scaled.
-                if power < settings.gate then
+                -- down, so they are dropped rather than scaled. Long entries get a
+                -- stricter bar on top: see LONG_DUR/LONG_GATE_MULT above.
+                local longTail = dur >= LONG_DUR and power < settings.gate * LONG_GATE_MULT
+                if power < settings.gate or longTail then
                     gated = gated + 1
                 elseif #voices < MAX_VOICES then
                     voices[#voices + 1] = { motor = motor, power = power, dur = dur, t = 0.0, atten = atten }
